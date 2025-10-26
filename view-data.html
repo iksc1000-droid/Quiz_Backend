@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Data Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; color: #8b5cf6; margin-bottom: 30px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; }
+        .section h3 { color: #333; margin-top: 0; }
+        .data-item { margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+        .count { font-size: 24px; font-weight: bold; color: #8b5cf6; }
+        .refresh-btn { background: #8b5cf6; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0; }
+        .refresh-btn:hover { background: #7c3aed; }
+        .loading { text-align: center; color: #666; }
+        .error { color: #dc2626; background: #fef2f2; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Quiz Data Viewer</h1>
+            <p>Real-time view of your quiz system data</p>
+            <button class="refresh-btn" onclick="loadData()">🔄 Refresh Data</button>
+        </div>
+
+        <div id="loading" class="loading">Loading data...</div>
+        
+        <div id="content" style="display: none;">
+            <!-- Quiz Data Section -->
+            <div class="section">
+                <h3>📋 Quiz Data (Source Database)</h3>
+                <div class="data-item">
+                    <div class="count" id="quizCount">0</div>
+                    <div>Quiz Documents in "school students" collection</div>
+                </div>
+                <div id="quizDetails"></div>
+            </div>
+
+            <!-- Attempts Section -->
+            <div class="section">
+                <h3>💾 User Attempts (Results Database)</h3>
+                <div class="data-item">
+                    <div class="count" id="attemptCount">0</div>
+                    <div>Attempt Records in "attempts" collection</div>
+                </div>
+                <div id="attemptDetails"></div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="section">
+                <h3>📊 Quiz Results (Results Database)</h3>
+                <div class="data-item">
+                    <div class="count" id="resultCount">0</div>
+                    <div>Result Records in "results" collection</div>
+                </div>
+                <div id="resultDetails"></div>
+            </div>
+
+            <!-- Attendance Section -->
+            <div class="section">
+                <h3>📝 Attendance Records (Results Database)</h3>
+                <div class="data-item">
+                    <div class="count" id="attendanceCount">0</div>
+                    <div>Attendance Records in "attendance" collection</div>
+                </div>
+                <div id="attendanceDetails"></div>
+            </div>
+
+            <!-- Database Info -->
+            <div class="section">
+                <h3>🌐 Database Information</h3>
+                <div class="data-item">
+                    <strong>Source Database:</strong> Bandhan (Quiz Data)<br>
+                    <strong>Results Database:</strong> Bandhan_wpd_report (User Data)<br>
+                    <strong>Cluster:</strong> psychometriccluster.jryoayj.mongodb.net<br>
+                    <strong>Access:</strong> <a href="https://cloud.mongodb.com/" target="_blank">MongoDB Atlas Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+            
+            try {
+                // Load quiz data
+                const quizResponse = await fetch('/api/quizzes/career_school_v1');
+                const quizData = await quizResponse.json();
+                
+                if (quizData.success) {
+                    document.getElementById('quizCount').textContent = '1';
+                    document.getElementById('quizDetails').innerHTML = `
+                        <div class="data-item">
+                            <strong>Quiz ID:</strong> ${quizData.data.quizId}<br>
+                            <strong>Title:</strong> ${quizData.data.title}<br>
+                            <strong>Questions:</strong> ${quizData.data.questions.length}<br>
+                            <strong>Scoring Method:</strong> ${quizData.data.scoringFramework.method}
+                        </div>
+                    `;
+                }
+
+                // Load attempts data (we'll create this endpoint)
+                try {
+                    const attemptsResponse = await fetch('/api/data/attempts');
+                    const attemptsData = await attemptsResponse.json();
+                    
+                    if (attemptsData.success) {
+                        document.getElementById('attemptCount').textContent = attemptsData.count;
+                        let attemptsHtml = '';
+                        attemptsData.data.slice(0, 5).forEach(attempt => {
+                            attemptsHtml += `
+                                <div class="data-item">
+                                    <strong>User:</strong> ${attempt.userId}<br>
+                                    <strong>Status:</strong> ${attempt.status}<br>
+                                    <strong>Answers:</strong> ${attempt.answers.length}<br>
+                                    <strong>Created:</strong> ${new Date(attempt.createdAt).toLocaleString()}
+                                </div>
+                            `;
+                        });
+                        document.getElementById('attemptDetails').innerHTML = attemptsHtml;
+                    }
+                } catch (e) {
+                    document.getElementById('attemptDetails').innerHTML = '<div class="error">Attempts data not available via API</div>';
+                }
+
+                // Load results data
+                try {
+                    const resultsResponse = await fetch('/api/data/results');
+                    const resultsData = await resultsResponse.json();
+                    
+                    if (resultsData.success) {
+                        document.getElementById('resultCount').textContent = resultsData.count;
+                        let resultsHtml = '';
+                        resultsData.data.slice(0, 5).forEach(result => {
+                            resultsHtml += `
+                                <div class="data-item">
+                                    <strong>User:</strong> ${result.name} (${result.email})<br>
+                                    <strong>Top Category:</strong> ${result.summary?.topCategory || 'N/A'}<br>
+                                    <strong>Created:</strong> ${new Date(result.createdAt).toLocaleString()}
+                                </div>
+                            `;
+                        });
+                        document.getElementById('resultDetails').innerHTML = resultsHtml;
+                    }
+                } catch (e) {
+                    document.getElementById('resultDetails').innerHTML = '<div class="error">Results data not available via API</div>';
+                }
+
+                // Load attendance data
+                try {
+                    const attendanceResponse = await fetch('/api/data/attendance');
+                    const attendanceData = await attendanceResponse.json();
+                    
+                    if (attendanceData.success) {
+                        document.getElementById('attendanceCount').textContent = attendanceData.count;
+                        let attendanceHtml = '';
+                        attendanceData.data.slice(0, 5).forEach(record => {
+                            attendanceHtml += `
+                                <div class="data-item">
+                                    <strong>Email:</strong> ${record.email}<br>
+                                    <strong>Quiz:</strong> ${record.quizId}<br>
+                                    <strong>Attended:</strong> ${new Date(record.attendedAt).toLocaleString()}
+                                </div>
+                            `;
+                        });
+                        document.getElementById('attendanceDetails').innerHTML = attendanceHtml;
+                    }
+                } catch (e) {
+                    document.getElementById('attendanceDetails').innerHTML = '<div class="error">Attendance data not available via API</div>';
+                }
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').innerHTML = '<div class="error">Error loading data. Make sure the server is running.</div>';
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        }
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>

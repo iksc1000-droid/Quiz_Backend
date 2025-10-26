@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Your Quiz Results - IKSC Bandhan</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 1.1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input[type="email"], select {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        input[type="email"]:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #c33;
+            display: none;
+        }
+        
+        .results {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-left: 4px solid #28a745;
+            display: none;
+        }
+        
+        .results h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .result-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        
+        .result-value {
+            color: #333;
+        }
+        
+        .summary-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e1e5e9;
+        }
+        
+        .summary-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .summary-content {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .quiz-type-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .quiz-type-info h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        
+        .quiz-type-info p {
+            color: #555;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">IKSC Bandhan</div>
+            <div class="subtitle">View Your Quiz Results</div>
+        </div>
+        
+        <div class="quiz-type-info">
+            <h3>🔍 How to View Your Results</h3>
+            <p>Enter the email address you used when taking the quiz and select the quiz type. We'll retrieve your personalized results instantly.</p>
+        </div>
+        
+        <form id="resultsForm">
+            <div class="form-group">
+                <label for="email">📧 Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="Enter your email address">
+            </div>
+            
+            <div class="form-group">
+                <label for="quizType">📋 Quiz Type</label>
+                <select id="quizType" name="quizType" required>
+                    <option value="">Select the quiz you completed</option>
+                    <option value="senior_citizen_v1">👴 Senior Citizen Life Assessment</option>
+                    <option value="divorce_conflict_v1">💔 Divorce Conflict Resolution</option>
+                    <option value="happiness_index_v1">😊 Marriage Happiness Index</option>
+                    <option value="pre_marriage_prep_v1">💍 Pre-Marriage Preparation</option>
+                    <option value="pre_marriage_compat_v1">💕 Pre-Marriage Compatibility</option>
+                    <option value="unemployed_career_v1">💼 Career Guidance Assessment</option>
+                    <option value="career_school_v1">🚀 Professional Development</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn" id="submitBtn">
+                🔍 View My Results
+            </button>
+        </form>
+        
+        <div id="error" class="error"></div>
+        <div id="results" class="results"></div>
+    </div>
+
+    <script>
+        document.getElementById('resultsForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const quizType = document.getElementById('quizType').value;
+            const errorDiv = document.getElementById('error');
+            const resultsDiv = document.getElementById('results');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            // Hide previous results/errors
+            errorDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '⏳ Loading Results...';
+            
+            try {
+                const response = await fetch(`/api/quizzes/results?email=${encodeURIComponent(email)}&quizId=${encodeURIComponent(quizType)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Display results
+                    const quizName = data.data.quizId.replace('_v1', '').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const completedDate = new Date(data.data.completedAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    resultsDiv.innerHTML = `
+                        <h2>🎉 Your ${quizName} Results</h2>
+                        
+                        <div class="result-item">
+                            <div class="result-label">👤 Name</div>
+                            <div class="result-value">${data.data.name}</div>
+                        </div>
+                        
+                        <div class="result-item">
+                            <div class="result-label">📧 Email</div>
+                            <div class="result-value">${data.data.email}</div>
+                        </div>
+                        
+                        <div class="result-item">
+                            <div class="result-label">📅 Completed</div>
+                            <div class="result-value">${completedDate}</div>
+                        </div>
+                        
+                        <div class="summary-section">
+                            <div class="summary-title">📊 Quiz Summary</div>
+                            <div class="summary-content">${JSON.stringify(data.data.summary, null, 2)}</div>
+                        </div>
+                        
+                        <div class="summary-section">
+                            <div class="summary-title">📋 Detailed Results</div>
+                            <div class="summary-content">${JSON.stringify(data.data.raw, null, 2)}</div>
+                        </div>
+                    `;
+                    resultsDiv.style.display = 'block';
+                } else {
+                    errorDiv.innerHTML = `
+                        <strong>❌ ${data.message || 'No results found'}</strong><br>
+                        Please check your email address and quiz type selection.
+                    `;
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                errorDiv.innerHTML = `
+                    <strong>⚠️ Error loading results</strong><br>
+                    Please check your internet connection and try again.
+                `;
+                errorDiv.style.display = 'block';
+            } finally {
+                // Reset button
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '🔍 View My Results';
+            }
+        });
+        
+        // Auto-detect quiz type from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const quizParam = urlParams.get('quiz');
+        if (quizParam) {
+            document.getElementById('quizType').value = quizParam;
+        }
+    </script>
+</body>
+</html>

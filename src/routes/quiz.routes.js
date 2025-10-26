@@ -1,0 +1,26 @@
+import { Router } from 'express';
+import { QuizController, AttemptController } from '../controllers/quiz.controller.js';
+
+export const createQuizRoutes = (quizService, attemptService, scoringService, mailService) => {
+  const router = Router();
+  
+  const quizController = new QuizController(quizService);
+  const attemptController = new AttemptController(attemptService, scoringService, mailService, quizService);
+
+  // GET /api/quizzes/results - get results by email and quizId (MUST be before /:quizId route)
+  router.get('/results', attemptController.getResultsByEmail.bind(attemptController));
+
+  // GET /api/quizzes/:quizId - fetch all questions & options
+  router.get('/:quizId', quizController.getQuiz.bind(quizController));
+
+  // POST /api/quizzes/:quizId/register - register user with name, email, phone
+  router.post('/:quizId/register', attemptController.registerUser.bind(attemptController));
+
+  // POST /api/quizzes/:quizId/answer - save one answer (partial; for autosave each Q)
+  router.post('/:quizId/answer', attemptController.saveAnswer.bind(attemptController));
+
+  // POST /api/quizzes/:quizId/finalize - submit all answers + user info (after Q15 form)
+  router.post('/:quizId/finalize', attemptController.finalizeAttempt.bind(attemptController));
+
+  return router;
+};
