@@ -7,53 +7,61 @@ const __dirname = path.dirname(__filename);
 
 // Load .env from the project root (one level up from src/)
 const envPath = path.join(__dirname, '..', '.env');
-console.log('🔍 Loading .env from:', envPath);
+if (process.env.NODE_ENV !== 'production') {
+  console.log('🔍 Loading .env from:', envPath);
+}
 dotenv.config({ path: envPath });
 
-// Debug: Log environment variables
-console.log('🔍 Environment variables loaded:');
-console.log('MONGO_URI_SOURCE:', process.env.MONGO_URI_SOURCE ? 'Present' : 'Missing');
-console.log('MONGO_URI_RESULTS:', process.env.MONGO_URI_RESULTS ? 'Present' : 'Missing');
-console.log('PORT:', process.env.PORT || 'Not set');
-
-// Fallback: Set environment variables directly if not loaded
-if (!process.env.MONGO_URI_SOURCE) {
-  process.env.MONGO_URI_SOURCE = 'mongodb+srv://psychouser:Psycho%401234@psychometriccluster.jryoayj.mongodb.net/Bandhan?retryWrites=true&w=majority&appName=PsychometricCluster';
-  console.log('🔧 Fallback: Set MONGO_URI_SOURCE');
-}
-if (!process.env.MONGO_URI_RESULTS) {
-  process.env.MONGO_URI_RESULTS = 'mongodb+srv://psychouser:Psycho%401234@psychometriccluster.jryoayj.mongodb.net/demo_test_answer?retryWrites=true&w=majority&appName=PsychometricCluster';
-  console.log('🔧 Fallback: Set MONGO_URI_RESULTS to demo_test_answer');
-}
-if (!process.env.PORT) {
-  process.env.PORT = '5000';
-  console.log('🔧 Fallback: Set PORT');
-}
-if (!process.env.CORS_ORIGIN) {
-  process.env.CORS_ORIGIN = 'http://localhost:5173';
-  console.log('🔧 Fallback: Set CORS_ORIGIN to 5173');
-}
-if (!process.env.SMTP_USER) {
-  process.env.SMTP_USER = 'ikscbandhan@gmail.com';
-  console.log('🔧 Fallback: Set SMTP_USER');
-}
-if (!process.env.SMTP_PASS) {
-  process.env.SMTP_PASS = 'ikscbandhan123';
-  console.log('🔧 Fallback: Set SMTP_PASS');
-}
-if (!process.env.FROM_EMAIL) {
-  process.env.FROM_EMAIL = 'ikscbandhan@gmail.com';
-  console.log('🔧 Fallback: Set FROM_EMAIL');
-}
-if (!process.env.FROM_NAME) {
-  process.env.FROM_NAME = 'IKSC Bandhan';
-  console.log('🔧 Fallback: Set FROM_NAME');
+// Debug: Log environment variables (development only)
+if (process.env.NODE_ENV !== 'production') {
+  console.log('🔍 Environment variables loaded:');
+  console.log('MONGO_URI_SOURCE:', process.env.MONGO_URI_SOURCE ? 'Present' : 'Missing');
+  console.log('MONGO_URI_RESULTS:', process.env.MONGO_URI_RESULTS ? 'Present' : 'Missing');
+  console.log('PORT:', process.env.PORT || 'Not set');
 }
 
-// Boot guards - catch all errors
+// Validate required environment variables (production safety)
+const requiredEnvVars = ['MONGO_URI_SOURCE', 'MONGO_URI_RESULTS'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingVars.join(', '));
+  console.error('Please create a .env file based on env.example');
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  } else {
+    console.warn('⚠️ Running in development mode with missing env vars - some features may not work');
+  }
+}
+
+// Set defaults only for development (not production)
+if (process.env.NODE_ENV !== 'production') {
+  if (!process.env.PORT) {
+    process.env.PORT = '5000';
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🔧 Development: Set PORT to 5000');
+    }
+  }
+  if (!process.env.CORS_ORIGIN) {
+    process.env.CORS_ORIGIN = 'http://localhost:5173';
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🔧 Development: Set CORS_ORIGIN to localhost:5173');
+    }
+  }
+  if (!process.env.DEFAULT_QUIZ_ID) {
+    process.env.DEFAULT_QUIZ_ID = 'divorce_conflict_v1';
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🔧 Development: Set DEFAULT_QUIZ_ID to divorce_conflict_v1');
+    }
+  }
+}
+
+// Boot guards - catch all errors (always log errors)
 process.on("uncaughtException", e => console.error("[FATAL] uncaughtException:", e));
 process.on("unhandledRejection", e => console.error("[FATAL] unhandledRejection:", e));
-console.log("[BOOT] NODE_ENV:", process.env.NODE_ENV, "SAFE_MODE:", process.env.SAFE_MODE || "0");
+if (process.env.NODE_ENV !== 'production') {
+  console.log("[BOOT] NODE_ENV:", process.env.NODE_ENV, "SAFE_MODE:", process.env.SAFE_MODE || "0");
+}
 
 import { config } from './config/env.js';
 import { connectDbs } from './config/db.js';
@@ -77,15 +85,19 @@ import { ModelFactory } from './services/model.factory.js';
 const startServer = async () => {
   try {
     // Build provenance for production debugging
-    console.log("[IKSC-BACKEND] build:", process.env.BUILD_ID || "no-build-id");
+    if (process.env.NODE_ENV !== 'production') {
+      console.log("[IKSC-BACKEND] build:", process.env.BUILD_ID || "no-build-id");
+    }
     
     logger.info('🚀 Starting server initialization...');
     
-    // Debug environment variables
-    logger.info('🔍 Environment check:');
-    logger.info('MONGO_URI_SOURCE:', process.env.MONGO_URI_SOURCE ? 'Present' : 'Missing');
-    logger.info('MONGO_URI_RESULTS:', process.env.MONGO_URI_RESULTS ? 'Present' : 'Missing');
-    logger.info('PORT:', process.env.PORT || 'Not set');
+    // Debug environment variables (development only)
+    if (process.env.NODE_ENV !== 'production') {
+      logger.info('🔍 Environment check:');
+      logger.info('MONGO_URI_SOURCE:', process.env.MONGO_URI_SOURCE ? 'Present' : 'Missing');
+      logger.info('MONGO_URI_RESULTS:', process.env.MONGO_URI_RESULTS ? 'Present' : 'Missing');
+      logger.info('PORT:', process.env.PORT || 'Not set');
+    }
     
     // Connect to databases
     logger.info('📊 Connecting to databases...');
@@ -118,10 +130,14 @@ const startServer = async () => {
     // Start server
     logger.info('🎯 Starting HTTP server...');
     const server = app.listen(config.port, "0.0.0.0", () => {
-      console.log("API listening on", config.port);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("API listening on", config.port);
+      }
       logger.info(`🚀 Server running on port ${config.port}`);
-      logger.info(`📊 Environment: ${config.nodeEnv}`);
-      logger.info(`🌐 CORS Origin: ${config.corsOrigin}`);
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info(`📊 Environment: ${config.nodeEnv}`);
+        logger.info(`🌐 CORS Origin: ${config.corsOrigin}`);
+      }
     });
 
     // Graceful shutdown

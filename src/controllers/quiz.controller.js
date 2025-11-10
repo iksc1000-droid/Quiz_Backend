@@ -78,18 +78,20 @@ export class AttemptController {
   }
 
   async registerUser(req, res) {
-    // Route entry logs
-    console.log("[ROUTE:ENTER]", req.method, req.originalUrl);
-    res.on("finish", () => console.log("[ROUTE:EXIT ]", req.method, req.originalUrl, res.statusCode));
-    
-    // Performance timing and diagnostics
-    console.time("[REGISTER] total");
-    console.log("[REGISTER] enter", { url: req.originalUrl });
-    res.on("finish", () => console.timeEnd("[REGISTER] total"));
+    // Route entry logs (development only)
+    if (process.env.NODE_ENV !== 'production') {
+      logger.debug("[ROUTE:ENTER]", req.method, req.originalUrl);
+      res.on("finish", () => logger.debug("[ROUTE:EXIT ]", req.method, req.originalUrl, res.statusCode));
+      
+      // Performance timing and diagnostics
+      console.time("[REGISTER] total");
+      logger.debug("[REGISTER] enter", { url: req.originalUrl });
+      res.on("finish", () => console.timeEnd("[REGISTER] total"));
+    }
     
     // Safe Mode guard
     if (process.env.SAFE_MODE === "1") {
-      console.warn("[SAFE_MODE] Early-200 for", req.originalUrl);
+      logger.warn("[SAFE_MODE] Early-200 for", req.originalUrl);
       return res.status(200).json({ success: true, diag: "safe-mode-bypass", message: "User registered successfully (safe mode)" });
     }
     
@@ -184,14 +186,16 @@ export class AttemptController {
   }
 
   async finalizeAttempt(req, res) {
-    // Route entry logs
-    console.log("[ROUTE:ENTER]", req.method, req.originalUrl);
-    res.on("finish", () => console.log("[ROUTE:EXIT ]", req.method, req.originalUrl, res.statusCode));
-    
-    // Performance timing and diagnostics
-    console.time("[FINALIZE] total");
-    console.log("[FINALIZE] enter", { url: req.originalUrl, hasAnswers: !!req.body?.answers });
-    res.on("finish", () => console.timeEnd("[FINALIZE] total"));
+    // Route entry logs (development only)
+    if (process.env.NODE_ENV !== 'production') {
+      logger.debug("[ROUTE:ENTER]", req.method, req.originalUrl);
+      res.on("finish", () => logger.debug("[ROUTE:EXIT ]", req.method, req.originalUrl, res.statusCode));
+      
+      // Performance timing and diagnostics
+      console.time("[FINALIZE] total");
+      logger.debug("[FINALIZE] enter", { url: req.originalUrl, hasAnswers: !!req.body?.answers });
+      res.on("finish", () => console.timeEnd("[FINALIZE] total"));
+    }
     
     try {
       logger.info('🚀 [START FINALIZE_ATTEMPT] - Starting quiz finalization process');
@@ -253,10 +257,14 @@ export class AttemptController {
         });
       }
       
-      console.log("[FINALIZE] answers.in:", rawAnswers.length, "→ normalized:", normalizedAnswers.length);
+      if (process.env.NODE_ENV !== 'production') {
+        logger.debug("[FINALIZE] answers.in:", rawAnswers.length, "→ normalized:", normalizedAnswers.length);
+      }
       
-      // Finalize sequence with instrumentation
-      console.time("[FINALIZE] upsert");
+      // Finalize sequence with instrumentation (development only)
+      if (process.env.NODE_ENV !== 'production') {
+        console.time("[FINALIZE] upsert");
+      }
       const result = await this.attemptService.finalizeAttempt({
         userId,
         quizId,
@@ -265,18 +273,22 @@ export class AttemptController {
         phone,
         answers: normalizedAnswers
       });
-      console.timeEnd("[FINALIZE] upsert");
-      
-      console.time("[FINALIZE] score");
+      if (process.env.NODE_ENV !== 'production') {
+        console.timeEnd("[FINALIZE] upsert");
+        console.time("[FINALIZE] score");
+      }
       const score = result.score || 0;
-      console.timeEnd("[FINALIZE] score");
-      
-      console.time("[FINALIZE] persist");
+      if (process.env.NODE_ENV !== 'production') {
+        console.timeEnd("[FINALIZE] score");
+        console.time("[FINALIZE] persist");
+      }
       // Score is already persisted by the service
-      console.timeEnd("[FINALIZE] persist");
+      if (process.env.NODE_ENV !== 'production') {
+        console.timeEnd("[FINALIZE] persist");
+        console.time("[FINALIZE] result");
+      }
       
       // Create result record
-      console.time("[FINALIZE] result");
       const resultRecord = await this.attemptService.createResult({
         quizId,
         userId,
@@ -287,10 +299,12 @@ export class AttemptController {
         raw: { answers: normalizedAnswers, score },
         attemptId: result.attempt._id
       });
-      console.timeEnd("[FINALIZE] result");
+      if (process.env.NODE_ENV !== 'production') {
+        console.timeEnd("[FINALIZE] result");
+      }
       
       // Queue emails (non-blocking)
-      console.log("[FINALIZE] emails -> user+owner (queued)");
+      logger.info("[FINALIZE] emails -> user+owner (queued)");
       this.queueWelcomeToUser({ to: email, name, quizId, score });
       this.queueOwnerNotification({ student: { email, name, quizId, score } });
       
@@ -301,10 +315,12 @@ export class AttemptController {
         score
       });
     } catch (error) {
-      console.error("🚨 [FINALIZE ERROR] Full error details:", error);
-      console.error("🚨 [FINALIZE ERROR] Stack trace:", error.stack);
-      console.error("🚨 [FINALIZE ERROR] Error name:", error.name);
-      console.error("🚨 [FINALIZE ERROR] Error message:", error.message);
+      logger.error("🚨 [FINALIZE ERROR] Full error details:", error);
+      if (process.env.NODE_ENV !== 'production') {
+        logger.error("🚨 [FINALIZE ERROR] Stack trace:", error.stack);
+        logger.error("🚨 [FINALIZE ERROR] Error name:", error.name);
+      }
+      logger.error("🚨 [FINALIZE ERROR] Error message:", error.message);
       return res.status(500).json({
         success: false,
         message: "Finalize failed: " + (error.message || error),
@@ -324,9 +340,9 @@ export class AttemptController {
       password: 'hidden',
       quizId: quizId // Pass quizId for dynamic email content
     }).then(info => {
-      console.log("[MAIL][USER] sent", info?.messageId);
+      logger.info("[MAIL][USER] sent", info?.messageId);
     }).catch(e => {
-      console.error("[MAIL][USER] err", e?.message || e);
+      logger.error("[MAIL][USER] err", e?.message || e);
     });
   }
 
@@ -335,9 +351,9 @@ export class AttemptController {
       to: process.env.OWNER_EMAIL,
       student
     }).then(info => {
-      console.log("[MAIL][OWNER] sent", info?.messageId);
+      logger.info("[MAIL][OWNER] sent", info?.messageId);
     }).catch(e => {
-      console.error("[MAIL][OWNER] err", e?.message || e);
+      logger.error("[MAIL][OWNER] err", e?.message || e);
     });
   }
 
@@ -353,7 +369,7 @@ export class AttemptController {
         });
       }
 
-      console.log(`🔍 [RESULTS] Looking up results for email: ${email}, quizId: ${quizId}`);
+      logger.info(`🔍 [RESULTS] Looking up results for email: ${email}, quizId: ${quizId}`);
       
       // Get the appropriate models based on quizId
       const resultModel = this.attemptService.modelFactory.getResultModel(quizId);
@@ -368,7 +384,7 @@ export class AttemptController {
         });
       }
 
-      console.log(`✅ [RESULTS] Found results for email: ${email}`);
+      logger.info(`✅ [RESULTS] Found results for email: ${email}`);
       
       return res.status(200).json({
         success: true,
@@ -383,7 +399,7 @@ export class AttemptController {
       });
       
     } catch (error) {
-      console.error("🚨 [RESULTS ERROR] Full error details:", error);
+      logger.error("🚨 [RESULTS ERROR] Full error details:", error);
       return res.status(500).json({
         success: false,
         message: "Failed to retrieve results: " + (error.message || error),

@@ -7,6 +7,7 @@ import { config } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { createQuizRoutes } from './routes/quiz.routes.js';
+import { AttemptController } from './controllers/quiz.controller.js';
 
 export const createApp = (quizService, attemptService, scoringService, mailService) => {
   const app = express();
@@ -63,8 +64,12 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   app._useL("helmet", helmet());
   
   // CORS - Production-ready configuration
+  const corsOrigins = process.env.CORS_ORIGIN 
+    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
+  
   app._useL("cors", cors({ 
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -74,11 +79,13 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   // Request logging with morgan
   app._useL("morgan", morgan(":method :url :status - :response-time ms"));
   
-  // Additional request logging for debugging
-  app.use((req, res, next) => {
-    console.log(`🌐 [${new Date().toISOString()}] ${req.method} ${req.url} from ${req.ip}`);
-    next();
-  });
+  // Additional request logging for debugging (only in development)
+  if (process.env.NODE_ENV !== 'production') {
+    app.use((req, res, next) => {
+      logger.info(`🌐 [${new Date().toISOString()}] ${req.method} ${req.url} from ${req.ip}`);
+      next();
+    });
+  }
 
   // Rate limiting
   const limiter = rateLimit({
@@ -132,6 +139,78 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
       res.json({ stack });
     });
   }
+
+  // Wrapper routes for frontend compatibility (legacy endpoints)
+  // These routes forward to the proper /api/quizzes/:quizId endpoints
+  const attemptController = new AttemptController(
+    attemptService, 
+    scoringService, 
+    mailService, 
+    quizService
+  );
+
+  // POST /register - Wrapper for /api/quizzes/:quizId/register
+  app.post('/register', async (req, res) => {
+    try {
+      // Determine quizId from body or use default for divorce quiz
+      const quizId = req.body.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1';
+      
+      // Create a new request object with quizId in params
+      req.params = { quizId };
+      
+      // Call the actual register endpoint
+      await attemptController.registerUser(req, res);
+    } catch (error) {
+      logger.error('❌ Register wrapper failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Registration failed: ' + (error.message || error)
+      });
+    }
+  });
+
+  // POST /result - Wrapper for /api/quizzes/:quizId/finalize
+  app.post('/result', async (req, res) => {
+    try {
+      // Determine quizId from body or use default
+      const quizId = req.body.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1';
+      
+      // Generate userId if not provided (for compatibility with frontend)
+      if (!req.body.userId && req.body.email) {
+        req.body.userId = `user_${req.body.email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+      }
+      
+      // Create a new request object with quizId in params
+      req.params = { quizId };
+      
+      // Call the actual finalize endpoint
+      await attemptController.finalizeAttempt(req, res);
+    } catch (error) {
+      logger.error('❌ Result wrapper failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Result submission failed: ' + (error.message || error)
+      });
+    }
+  });
+
+  // GET /user/:email - Get user results by email
+  app.get('/user/:email', async (req, res) => {
+    try {
+      const { email } = req.params;
+      const quizId = req.query.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1';
+      
+      // Use the getResultsByEmail method
+      req.query = { email, quizId };
+      await attemptController.getResultsByEmail(req, res);
+    } catch (error) {
+      logger.error('❌ Get user data failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve user data: ' + (error.message || error)
+      });
+    }
+  });
 
   // API routes
   app.use('/api/quizzes', createQuizRoutes(quizService, attemptService, scoringService, mailService));
