@@ -279,23 +279,54 @@ export class AttemptService {
         resultToken // Explicitly set to ensure it's never null
       });
 
-      // Save with retry logic for duplicate key errors
+      // Ensure resultToken is set before save (extra safety)
+      if (!result.resultToken || result.resultToken === null || result.resultToken === '') {
+        resultToken = new mongoose.Types.ObjectId().toString();
+        result.resultToken = resultToken;
+        logger.warn('⚠️  resultToken was null/empty before save, regenerated');
+      }
+
+      // Save with retry logic for duplicate key errors (including null tokens)
       let savedResult;
-      let retries = 3;
+      let retries = 5; // Increased retries for null token issues
       while (retries > 0) {
         try {
+          // Double-check token is set before each save attempt
+          if (!result.resultToken || result.resultToken === null || result.resultToken === '') {
+            resultToken = new mongoose.Types.ObjectId().toString();
+            result.resultToken = resultToken;
+            logger.warn(`⚠️  resultToken was null before save attempt, regenerated (${retries} retries left)`);
+          }
+          
           savedResult = await result.save();
+          
+          // Verify saved result has token
+          if (!savedResult.resultToken || savedResult.resultToken === null) {
+            throw new Error('Saved result has null resultToken - this should not happen');
+          }
+          
           break;
         } catch (saveError) {
-          // If duplicate key error, generate new token and retry
-          if (saveError.code === 11000 && saveError.keyPattern?.resultToken) {
-            retries--;
-            if (retries > 0) {
-              resultToken = new mongoose.Types.ObjectId().toString();
-              result.resultToken = resultToken;
-              logger.warn(`⚠️  Duplicate token detected, generating new token (${retries} retries left)`);
+          // If duplicate key error (including null tokens), generate new token and retry
+          if (saveError.code === 11000) {
+            const isResultTokenError = saveError.keyPattern?.resultToken || 
+                                     saveError.message?.includes('resultToken') ||
+                                     saveError.message?.includes('null');
+            
+            if (isResultTokenError) {
+              retries--;
+              if (retries > 0) {
+                // Generate new token
+                resultToken = new mongoose.Types.ObjectId().toString();
+                result.resultToken = resultToken;
+                logger.warn(`⚠️  Duplicate/null token error detected, generating new token (${retries} retries left)`);
+                // Small delay to avoid race conditions
+                await new Promise(resolve => setTimeout(resolve, 100));
+              } else {
+                throw new Error('Failed to create result after multiple retries due to duplicate/null token');
+              }
             } else {
-              throw new Error('Failed to create result after multiple retries due to duplicate token');
+              throw saveError;
             }
           } else {
             throw saveError;

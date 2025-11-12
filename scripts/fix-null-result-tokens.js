@@ -21,12 +21,12 @@ import { config } from 'dotenv';
 // Load environment variables
 config();
 
-// Database connection string
-const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
+// Database connection string - use MONGO_URI_RESULTS from .env
+const MONGODB_URI = process.env.MONGO_URI_RESULTS || process.env.MONGODB_URI || process.env.MONGO_URI;
 
 if (!MONGODB_URI) {
-  console.error('❌ MONGODB_URI not found in environment variables');
-  console.error('   Please set MONGODB_URI or MONGO_URI in your .env file');
+  console.error('❌ MONGO_URI_RESULTS not found in environment variables');
+  console.error('   Please set MONGO_URI_RESULTS in your .env file');
   process.exit(1);
 }
 
