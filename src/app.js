@@ -109,6 +109,49 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
   });
 
+  // Email test endpoint (for debugging)
+  app.post('/test-email', async (req, res) => {
+    try {
+      const { to } = req.body;
+      const testEmail = to || process.env.FROM_EMAIL || 'iksc1000@gmail.com';
+      
+      logger.info(`📧 [TEST EMAIL] Attempting to send test email to: ${testEmail}`);
+      
+      // Test transporter connection first
+      await mailService.transporter.verify();
+      logger.info(`✅ [TEST EMAIL] SMTP connection verified`);
+      
+      // Send test email
+      const result = await mailService.sendWelcome({
+        to: testEmail,
+        name: 'Test User',
+        summary: { score: 100 },
+        quizId: 'divorce_conflict_v1'
+      });
+      
+      if (result) {
+        logger.info(`✅ [TEST EMAIL] Test email sent successfully: ${result.messageId}`);
+        return res.status(200).json({
+          success: true,
+          message: 'Test email sent successfully',
+          messageId: result.messageId
+        });
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send test email (check logs for details)'
+        });
+      }
+    } catch (error) {
+      logger.error(`❌ [TEST EMAIL] Error:`, error);
+      return res.status(500).json({
+        success: false,
+        message: 'Test email failed: ' + (error.message || error),
+        details: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+      });
+    }
+  });
+
   // Test endpoint for frontend connection
   app.get('/api/test', (req, res) => {
     res.json({ 
@@ -197,17 +240,48 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   // GET /user/:email - Get user results by email
   app.get('/user/:email', async (req, res) => {
     try {
-      const { email } = req.params;
-      const quizId = req.query.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1';
+      // Decode email from URL (handles %40 for @, etc.)
+      let email = decodeURIComponent(req.params.email);
       
-      // Use the getResultsByEmail method
-      req.query = { email, quizId };
-      await attemptController.getResultsByEmail(req, res);
+      // Fix common encoding issues
+      // If email contains %40, it means @ wasn't decoded properly
+      if (email.includes('%40')) {
+        email = email.replace(/%40/g, '@');
+      }
+      // If email has %4 (partial encoding), try to fix
+      if (email.includes('%4') && !email.includes('@')) {
+        email = email.replace(/%4/g, '@');
+      }
+      
+      // Validate email format
+      if (!email.includes('@') || !email.includes('.')) {
+        logger.warn(`⚠️  [USER ENDPOINT] Invalid email format: ${req.params.email} -> ${email}`);
+        // Try one more time with original
+        email = req.params.email.replace(/%40/g, '@').replace(/%/g, '');
+      }
+      
+      const quizId = (req.query.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1')
+        .replace(/\s+/g, '_') // Replace spaces with underscores
+        .trim();
+      
+      logger.info(`🔍 [USER ENDPOINT] Original: ${req.params.email}, Decoded email: ${email}, quizId: ${quizId}`);
+      
+      // Create a modified request object with query property (req.query is read-only)
+      const modifiedReq = {
+        ...req,
+        query: { email, quizId }
+      };
+      
+      // Call getResultsByEmail with modified request
+      await attemptController.getResultsByEmail(modifiedReq, res);
     } catch (error) {
       logger.error('❌ Get user data failed:', error);
+      logger.error('❌ Error message:', error.message);
+      logger.error('❌ Error stack:', error.stack);
       res.status(500).json({
         success: false,
-        message: 'Failed to retrieve user data: ' + (error.message || error)
+        message: 'Failed to retrieve user data: ' + (error.message || error),
+        details: process.env.NODE_ENV !== 'production' ? error.stack : undefined
       });
     }
   });

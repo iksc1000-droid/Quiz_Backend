@@ -34,6 +34,40 @@ if (missingVars.length > 0) {
   }
 }
 
+// Validate production-specific environment variables
+if (process.env.NODE_ENV === 'production') {
+  const productionRequiredVars = {
+    'CORS_ORIGIN': 'Frontend domain for CORS',
+    'BRAND_SITE': 'Frontend URL for email links',
+    'SMTP_PASS': 'Gmail App Password for sending emails'
+  };
+  
+  const missingProdVars = Object.keys(productionRequiredVars).filter(varName => !process.env[varName]);
+  
+  if (missingProdVars.length > 0) {
+    console.error('❌ Missing required production environment variables:');
+    missingProdVars.forEach(varName => {
+      console.error(`   - ${varName}: ${productionRequiredVars[varName]}`);
+    });
+    console.error('Please set these in your .env file before deploying to production.');
+    process.exit(1);
+  }
+  
+  // Validate SMTP password format
+  if (process.env.SMTP_PASS) {
+    const pass = process.env.SMTP_PASS.trim();
+    if (pass.includes(' ')) {
+      console.error('❌ SMTP_PASS contains spaces! Gmail App Passwords must not have spaces.');
+      console.error('   Current value:', pass);
+      console.error('   Should be:', pass.replace(/\s/g, ''));
+      process.exit(1);
+    }
+    if (pass.length !== 16) {
+      console.warn('⚠️  SMTP_PASS length is not 16 characters. Gmail App Passwords are typically 16 chars.');
+    }
+  }
+}
+
 // Set defaults only for development (not production)
 if (process.env.NODE_ENV !== 'production') {
   if (!process.env.PORT) {
@@ -119,6 +153,88 @@ const startServer = async () => {
     // Initialize mailer
     logger.info('📧 Initializing mailer...');
     const transporter = createMailer();
+    
+    // Verify SMTP connection on startup
+    try {
+      logger.info('🔍 Verifying SMTP connection...');
+      
+      // Log SMTP config (without password) for debugging
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info('📧 SMTP Config:', {
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: process.env.SMTP_PORT || 465,
+          user: process.env.SMTP_USER || 'not set',
+          passLength: process.env.SMTP_PASS ? process.env.SMTP_PASS.length : 0,
+          passHasSpaces: process.env.SMTP_PASS ? process.env.SMTP_PASS.includes(' ') : false
+        });
+      }
+      
+      await transporter.verify();
+      logger.info('✅ SMTP connection verified successfully');
+    } catch (error) {
+      // Determine the actual error reason
+      let errorReason = 'Unknown error';
+      
+      if (error.code === 'EAUTH') {
+        errorReason = 'SMTP authentication failed - check SMTP_USER and SMTP_PASS in .env file';
+      } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
+        errorReason = 'SMTP connection failed - check internet connection and SMTP_HOST/port settings';
+      } else if (error.responseCode === 535) {
+        errorReason = 'Gmail authentication failed - verify App Password is correct (16 chars, no spaces) and 2FA is enabled';
+      } else if (error.responseCode === 550) {
+        errorReason = 'Email rejected by server - check sender email address and Gmail account settings';
+      } else if (error.message) {
+        errorReason = error.message;
+      }
+      
+      logger.error('❌ SMTP connection verification failed');
+      logger.error(`❌ Error reason: ${errorReason}`);
+      
+      // Log the full error object for debugging
+      const errorDetails = {
+        message: error.message,
+        code: error.code,
+        responseCode: error.responseCode,
+        command: error.command,
+        response: error.response,
+        responseCode: error.responseCode
+      };
+      
+      // Try to extract more details from the error
+      if (error.response) {
+        errorDetails.fullResponse = error.response;
+      }
+      if (error.code) {
+        errorDetails.errorCode = error.code;
+      }
+      
+      logger.error('❌ SMTP Error details:', errorDetails);
+      
+      // Log the actual response message if available
+      if (error.response) {
+        logger.error(`❌ Gmail response: ${error.response}`);
+      }
+      
+      if (process.env.NODE_ENV !== 'production') {
+        logger.error('❌ Full error stack:', error.stack);
+      }
+      
+      // Check for common issues
+      const passHasSpaces = process.env.SMTP_PASS ? process.env.SMTP_PASS.includes(' ') : false;
+      const passLength = process.env.SMTP_PASS ? process.env.SMTP_PASS.length : 0;
+      
+      logger.warn('⚠️  Email sending may fail. Please check SMTP configuration in .env file.');
+      logger.warn('⚠️  Common issues:');
+      if (passHasSpaces) {
+        logger.warn(`   ❌ SMTP_PASS has spaces (current length: ${passLength}, should be 16 chars with NO spaces)`);
+      } else {
+        logger.warn(`   ✓ SMTP_PASS format looks correct (length: ${passLength})`);
+      }
+      logger.warn('   2. Wrong App Password (need Gmail App Password, not regular password)');
+      logger.warn('   3. 2FA not enabled on Gmail account');
+      logger.warn('   4. "Less secure app access" might be disabled (use App Password instead)');
+    }
+    
     const mailService = new MailService(transporter);
     logger.info('✅ Mailer initialized');
 

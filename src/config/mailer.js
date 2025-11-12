@@ -4,8 +4,12 @@ import { logger } from '../utils/logger.js';
 import { getQuizConfig } from './quizConfig.js';
 
 export const createMailer = () => {
+  // Use explicit host/port/secure instead of 'service: gmail' for better control
+  // This matches the .env configuration exactly
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: config.smtp.host,
+    port: config.smtp.port,
+    secure: config.smtp.secure, // true for 465, false for other ports
     auth: {
       user: config.smtp.user,
       pass: config.smtp.pass
@@ -19,22 +23,58 @@ export const createMailer = () => {
     maxConnections: 2,
     maxMessages: 3,
     rateDelta: 20000,
-    rateLimit: 5
+    rateLimit: 5,
+    // Additional Gmail-specific settings
+    tls: {
+      rejectUnauthorized: false // Allow self-signed certificates if needed
+    }
   });
+
+  // Log configuration (without password) for debugging
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info('📧 Mailer configuration:', {
+      host: config.smtp.host,
+      port: config.smtp.port,
+      secure: config.smtp.secure,
+      user: config.smtp.user,
+      passLength: config.smtp.pass?.length || 0,
+      passHasSpaces: config.smtp.pass?.includes(' ') || false,
+      passFirst4: config.smtp.pass?.substring(0, 4) || 'N/A',
+      passLast4: config.smtp.pass?.substring(Math.max(0, (config.smtp.pass?.length || 0) - 4)) || 'N/A',
+      // Compare with raw env var to ensure trimming worked
+      rawEnvPassLength: process.env.SMTP_PASS?.length || 0
+    });
+    
+    // Verify password matches what's in .env
+    if (config.smtp.pass !== process.env.SMTP_PASS?.trim()) {
+      logger.warn('⚠️  Password mismatch after trimming - this should not happen');
+    }
+  }
 
   return transporter;
 };
 
-export const sendWelcomeEmail = async (transporter, { to, name, summary, userName, password, quizId }) => {
+export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId }) => {
   try {
     // Get quiz-specific configuration
-    console.log(`📧 [EMAIL] Generating email for quizId: ${quizId}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📧 [EMAIL] Generating email for quizId: ${quizId}`);
+    }
     const quizConfig = getQuizConfig(quizId);
-    console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
+    }
     
     // Create results URL with quiz type parameter for better UX
+    // Validate BRAND_SITE is set in production
+    if (!config.branding.site && process.env.NODE_ENV === 'production') {
+      logger.error('❌ BRAND_SITE is not set in production! Email links will not work.');
+      throw new Error('BRAND_SITE environment variable is required in production');
+    }
     const resultsUrl = `${config.branding.site}/results?quiz=${encodeURIComponent(quizId)}`;
-    console.log(`📧 [EMAIL] Results URL: ${resultsUrl}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📧 [EMAIL] Results URL: ${resultsUrl}`);
+    }
     
     const mailOptions = {
       from: `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`,
@@ -253,7 +293,15 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, userNam
     logger.info(`✅ Welcome email sent to ${to}:`, result.messageId);
     return result;
   } catch (error) {
-    logger.error(`❌ Failed to send welcome email to ${to}:`, error);
+    logger.error(`❌ Failed to send welcome email to ${to}:`, error.message || error);
+    logger.error(`❌ Email send error details:`, {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode,
+      stack: error.stack
+    });
     throw error;
   }
 };

@@ -99,28 +99,28 @@ export class AttemptController {
       const { quizId } = req.params;
       const validatedData = userRegistrationSchema.parse(req.body);
       
-      // Generate userId and credentials like IKSC Bandhan
-      const firstName = validatedData.name.split(' ')[0] || 'User';
-      const lastName = validatedData.name.split(' ').slice(1).join(' ') || 'Name';
-      const firstNameLower = firstName.toLowerCase();
-      const lastNameLower = lastName.toLowerCase();
+      // Check if user has already completed the quiz
+      const existingAttempt = await this.attemptService.findUserByEmail(validatedData.email, quizId);
+      const lockedStatuses = ['submitted', 'finalizing', 'completed'];
+      if (existingAttempt && lockedStatuses.includes(existingAttempt.status)) {
+        logger.warn(`⚠️  Duplicate registration attempt for completed quiz by ${validatedData.email}`);
+        return res.status(409).json({
+          success: false,
+          message: 'You have already completed this assessment. Please check your email for the result or try with another email address.'
+        });
+      }
       
-      // Generate unique userName (no need to check for uniqueness in this simple case)
-      const userName = `${firstNameLower}.${lastNameLower}@${Math.floor(1000 + Math.random() * 9000)}`;
-      
-      const password = `${firstNameLower}@${validatedData.phone.slice(0, 4)}`;
+      // Generate userId (no username/password needed)
       const userId = `user_${validatedData.email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
       
-      // Create or update user attempt with basic info
-      const attempt = await this.attemptService.createOrUpdateUser({
+      // Create or update user attempt with basic info (preserves existing data)
+      await this.attemptService.createOrUpdateUser({
         userId,
         quizId,
         email: validatedData.email,
         name: validatedData.name,
         phone: validatedData.phone,
-        gender: validatedData.gender,
-        userName,
-        password
+        gender: validatedData.gender
       });
       
       // Diagnostic early return if enabled
@@ -134,9 +134,7 @@ export class AttemptController {
         success: true,
         message: 'User registered successfully',
         userId: userId,
-        email: validatedData.email,
-        userName
-        // Password removed for security
+        email: validatedData.email
       });
     } catch (error) {
       logger.error('❌ Registration failed:', error);
@@ -288,14 +286,76 @@ export class AttemptController {
         console.time("[FINALIZE] result");
       }
       
-      // Create result record
+      // Calculate topCategory from quiz answers
+      let topCategory = 'General';
+      try {
+        // Calculate category scores based on quiz type
+        if (quizId === 'divorce_conflict_v1') {
+          // For divorce conflict quiz, calculate parameter scores
+          const parameterScores = {
+            'A': 0, // Partner Understanding
+            'B': 0, // Communication Issues
+            'C': 0, // Conflict Patterns
+            'D': 0, // Family Dynamics
+            'E': 0, // Emotional Distance
+            'F': 0  // Trust Issues
+          };
+          
+          // Count answers for each parameter
+          normalizedAnswers.forEach(answer => {
+            const category = answer.questionId?.charAt(0);
+            if (parameterScores.hasOwnProperty(category)) {
+              // Score based on selected option (a=0, b=1, c=2, d=3)
+              const option = answer.selectedOption?.charAt(answer.selectedOption.length - 1);
+              const optionScore = option === 'a' ? 0 : option === 'b' ? 1 : option === 'c' ? 2 : 3;
+              parameterScores[category] += optionScore;
+            }
+          });
+          
+          // Find top category
+          const categoryNames = {
+            'A': 'Partner Understanding',
+            'B': 'Communication Issues',
+            'C': 'Conflict Patterns',
+            'D': 'Family Dynamics',
+            'E': 'Emotional Distance',
+            'F': 'Trust Issues'
+          };
+          
+          const sortedCategories = Object.entries(parameterScores)
+            .sort(([, a], [, b]) => b - a);
+          
+          if (sortedCategories.length > 0) {
+            topCategory = categoryNames[sortedCategories[0][0]] || 'General';
+          }
+        } else {
+          // For other quiz types, use quiz config category
+          const quizConfig = require('../config/quizConfig.js').getQuizConfig(quizId);
+          topCategory = quizConfig.category || 'General';
+        }
+      } catch (error) {
+        logger.warn('⚠️ Failed to calculate topCategory, using default:', error.message);
+        // Fallback to quiz config category
+        try {
+          const quizConfig = require('../config/quizConfig.js').getQuizConfig(quizId);
+          topCategory = quizConfig.category || 'General';
+        } catch (e) {
+          topCategory = 'General';
+        }
+      }
+      
+      // Get updated name from attempt (in case it was updated during finalization)
+      const updatedName = result.attempt.name || name;
+      const updatedPhone = result.attempt.phone || phone;
+      
+      // Create result record with updated name
       const resultRecord = await this.attemptService.createResult({
         quizId,
         userId,
         email,
-        name,
-        phone,
-        summary: { score, topCategory: 'General' }, // TODO: Calculate real summary
+        name: updatedName, // Use name from attempt (may have been updated)
+        phone: updatedPhone, // Use phone from attempt (may have been updated)
+        summary: { score, topCategory }, // Use calculated topCategory
         raw: { answers: normalizedAnswers, score },
         attemptId: result.attempt._id
       });
@@ -303,10 +363,34 @@ export class AttemptController {
         console.timeEnd("[FINALIZE] result");
       }
       
-      // Queue emails (non-blocking)
-      logger.info("[FINALIZE] emails -> user+owner (queued)");
-      this.queueWelcomeToUser({ to: email, name, quizId, score });
-      this.queueOwnerNotification({ student: { email, name, quizId, score } });
+      // Send emails (non-blocking but with proper error handling)
+      logger.info("[FINALIZE] emails -> user+owner (sending)");
+      
+      // Send welcome email to user (critical - user must receive email)
+      this.queueWelcomeToUser({ to: email, name, quizId, score })
+        .then(info => {
+          if (info && info.messageId) {
+            logger.info(`[FINALIZE] ✅ User email sent successfully to ${email}`);
+          } else {
+            logger.warn(`[FINALIZE] ⚠️  User email may not have been sent to ${email}`);
+          }
+        })
+        .catch(err => {
+          logger.error(`[FINALIZE] ❌ CRITICAL: Failed to send email to user ${email}`);
+          logger.error(`[FINALIZE] Error: ${err.message || err}`);
+          // Log but don't break the response - user already got their results
+        });
+      
+      // Send owner notification (non-critical, failures are acceptable)
+      this.queueOwnerNotification({ student: { email, name, quizId, score } })
+        .then(info => {
+          if (info && info.messageId) {
+            logger.info(`[FINALIZE] ✅ Owner notification sent successfully`);
+          }
+        })
+        .catch(err => {
+          logger.warn(`[FINALIZE] ⚠️  Owner notification failed (non-critical): ${err.message || err}`);
+        });
       
       return res.status(200).json({
         success: true,
@@ -331,29 +415,77 @@ export class AttemptController {
   }
 
   // Email queue methods (non-blocking)
-  queueWelcomeToUser({ to, name, quizId, score }) {
-    this.mailService.sendWelcome({
+  async queueWelcomeToUser({ to, name, quizId, score }) {
+    logger.info(`[MAIL][USER] 📧 Preparing to send welcome email to: ${to}`);
+    
+    // Get result to include topCategory in email
+    let topCategory = 'General';
+    try {
+      const resultModel = this.modelFactory.getResultModel(quizId);
+      const latestResult = await resultModel.findOne({ email: to, quizId }).sort({ createdAt: -1 });
+      if (latestResult?.summary?.topCategory) {
+        topCategory = latestResult.summary.topCategory;
+      }
+    } catch (error) {
+      logger.warn(`[MAIL][USER] Could not fetch topCategory for email: ${error.message}`);
+    }
+    
+    return this.mailService.sendWelcome({
       to,
       name,
-      summary: { score },
-      userName: name?.toLowerCase().replace(/\s+/g, '.') + '@' + Math.floor(1000 + Math.random() * 9000),
-      password: 'hidden',
+      summary: { score, topCategory }, // Include calculated topCategory
       quizId: quizId // Pass quizId for dynamic email content
     }).then(info => {
-      logger.info("[MAIL][USER] sent", info?.messageId);
+      // Success case - email was sent
+      if (info && info.messageId) {
+        logger.info(`[MAIL][USER] ✅ Email sent successfully to ${to}`);
+        logger.info(`[MAIL][USER] Message ID: ${info.messageId}`);
+        return info;
+      } else {
+        // This shouldn't happen if error handling is correct, but handle it anyway
+        const error = new Error('Email function returned without messageId - email may not have been delivered');
+        logger.error(`[MAIL][USER] ❌ ${error.message}`);
+        throw error;
+      }
     }).catch(e => {
-      logger.error("[MAIL][USER] err", e?.message || e);
+      // Error case - email failed to send
+      const errorMessage = e?.message || 'Unknown error occurred';
+      logger.error(`[MAIL][USER] ❌ FAILED to send email to ${to}`);
+      logger.error(`[MAIL][USER] Error: ${errorMessage}`);
+      
+      // Log additional context for debugging
+      if (e?.code) {
+        logger.error(`[MAIL][USER] Error code: ${e.code}`);
+      }
+      if (e?.responseCode) {
+        logger.error(`[MAIL][USER] Response code: ${e.responseCode}`);
+      }
+      
+      // Re-throw with clear message
+      throw new Error(`Email sending failed for ${to}: ${errorMessage}`);
     });
   }
 
   queueOwnerNotification({ student }) {
-    this.mailService.sendOwnerNotification({
+    logger.info(`[MAIL][OWNER] Attempting to send owner notification for: ${student.email}`);
+    return this.mailService.sendOwnerNotification({
       to: process.env.OWNER_EMAIL,
       student
     }).then(info => {
-      logger.info("[MAIL][OWNER] sent", info?.messageId);
+      if (info && info.messageId) {
+        logger.info(`[MAIL][OWNER] ✅ Notification sent successfully, messageId: ${info.messageId}`);
+      } else {
+        logger.warn(`[MAIL][OWNER] ⚠️ Notification function returned but no messageId`);
+      }
+      return info;
     }).catch(e => {
-      logger.error("[MAIL][OWNER] err", e?.message || e);
+      logger.error(`[MAIL][OWNER] ❌ Failed to send owner notification:`, e?.message || e);
+      logger.error(`[MAIL][OWNER] Error details:`, {
+        message: e?.message,
+        code: e?.code,
+        stack: e?.stack
+      });
+      throw e; // Re-throw so caller knows it failed
     });
   }
 
@@ -369,41 +501,130 @@ export class AttemptController {
         });
       }
 
-      logger.info(`🔍 [RESULTS] Looking up results for email: ${email}, quizId: ${quizId}`);
-      
-      // Get the appropriate models based on quizId
-      const resultModel = this.attemptService.modelFactory.getResultModel(quizId);
-      
-      // Find result by email and quizId
-      const result = await resultModel.findOne({ email, quizId }).sort({ createdAt: -1 });
-      
-      if (!result) {
-        return res.status(404).json({
-          success: false,
-          message: 'Results not found for this email and quiz type'
-        });
-      }
+      // Normalize email and quizId
+      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedQuizId = quizId.trim().replace(/\s+/g, '_');
 
-      logger.info(`✅ [RESULTS] Found results for email: ${email}`);
+      logger.info(`🔍 [RESULTS] Looking up results for email: ${normalizedEmail}, quizId: ${normalizedQuizId}`);
+      logger.info(`🔍 [RESULTS] Raw email from query: ${email}, Raw quizId: ${quizId}`);
       
-      return res.status(200).json({
-        success: true,
-        data: {
-          quizId: result.quizId,
-          name: result.name,
-          email: result.email,
-          summary: result.summary,
-          raw: result.raw,
-          completedAt: result.createdAt
+      try {
+        // Get the appropriate models based on quizId
+        logger.info(`🔍 [RESULTS] Getting model for quizId: ${normalizedQuizId}`);
+        const resultModel = this.attemptService.modelFactory.getResultModel(normalizedQuizId);
+        logger.info(`✅ [RESULTS] Model obtained successfully`);
+        
+        // Get collection name for debugging (safely)
+        let collectionName = 'unknown';
+        try {
+          collectionName = resultModel.collection?.name || resultModel.modelName || 'unknown';
+        } catch (e) {
+          // Collection not accessible yet, that's okay
         }
-      });
+        logger.info(`🔍 [RESULTS] Querying collection: ${collectionName}`);
+        
+        // Try multiple query strategies
+        let result = null;
+        
+        // Strategy 1: Exact lowercase match
+        try {
+          result = await resultModel.findOne({ 
+            email: normalizedEmail, 
+            quizId: normalizedQuizId 
+          }).sort({ createdAt: -1 }).lean();
+          if (result) logger.info(`✅ [RESULTS] Found with exact lowercase match`);
+        } catch (err) {
+          logger.warn(`⚠️  [RESULTS] Exact match query failed:`, err.message);
+        }
+        
+        // Strategy 2: Original email (as stored)
+        if (!result) {
+          try {
+            result = await resultModel.findOne({ 
+              email: email.trim(), 
+              quizId: normalizedQuizId 
+            }).sort({ createdAt: -1 }).lean();
+            if (result) logger.info(`✅ [RESULTS] Found with original email match`);
+          } catch (err) {
+            logger.warn(`⚠️  [RESULTS] Original email query failed:`, err.message);
+          }
+        }
+        
+        // Strategy 3: Case-insensitive regex (fallback)
+        if (!result) {
+          try {
+            const escapedEmail = normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            result = await resultModel.findOne({ 
+              email: { $regex: new RegExp(`^${escapedEmail}$`, 'i') }, 
+              quizId: normalizedQuizId 
+            }).sort({ createdAt: -1 }).lean();
+            if (result) logger.info(`✅ [RESULTS] Found with regex match`);
+          } catch (err) {
+            logger.warn(`⚠️  [RESULTS] Regex query failed:`, err.message);
+          }
+        }
+        
+        // Strategy 4: Just by quizId (last resort - get most recent)
+        if (!result) {
+          try {
+            logger.warn(`⚠️  [RESULTS] Trying to find any result for quizId: ${normalizedQuizId}`);
+            const allResults = await resultModel.find({ quizId: normalizedQuizId })
+              .sort({ createdAt: -1 })
+              .limit(5)
+              .lean();
+            logger.info(`🔍 [RESULTS] Found ${allResults.length} results for quizId, checking emails...`);
+            for (const r of allResults) {
+              if (r.email && r.email.toLowerCase() === normalizedEmail) {
+                result = r;
+                logger.info(`✅ [RESULTS] Found match in results list`);
+                break;
+              }
+            }
+          } catch (err) {
+            logger.error(`❌ [RESULTS] Fallback query failed:`, err.message);
+          }
+        }
+        
+        if (!result) {
+          logger.warn(`⚠️  [RESULTS] No results found after all strategies`);
+          logger.warn(`⚠️  [RESULTS] Searched for email: ${normalizedEmail} (original: ${email}), quizId: ${normalizedQuizId}`);
+          return res.status(404).json({
+            success: false,
+            message: 'Results not found for this email and quiz type'
+          });
+        }
+
+        logger.info(`✅ [RESULTS] Found results for email: ${result.email || normalizedEmail}`);
+        
+        return res.status(200).json({
+          success: true,
+          data: {
+            quizId: result.quizId,
+            name: result.name,
+            email: result.email,
+            summary: result.summary,
+            raw: result.raw,
+            completedAt: result.createdAt,
+            resultToken: result.resultToken
+          }
+        });
+      } catch (dbError) {
+        logger.error("🚨 [RESULTS DB ERROR]:", dbError);
+        logger.error("🚨 [RESULTS DB ERROR] Message:", dbError.message);
+        logger.error("🚨 [RESULTS DB ERROR] Name:", dbError.name);
+        logger.error("🚨 [RESULTS DB ERROR] Stack:", dbError.stack);
+        throw dbError;
+      }
       
     } catch (error) {
       logger.error("🚨 [RESULTS ERROR] Full error details:", error);
+      logger.error("🚨 [RESULTS ERROR] Error message:", error.message);
+      logger.error("🚨 [RESULTS ERROR] Error stack:", error.stack);
       return res.status(500).json({
         success: false,
         message: "Failed to retrieve results: " + (error.message || error),
-        code: "E_RESULTS_LOOKUP_FAILED"
+        code: "E_RESULTS_LOOKUP_FAILED",
+        details: process.env.NODE_ENV !== 'production' ? error.stack : undefined
       });
     }
   }

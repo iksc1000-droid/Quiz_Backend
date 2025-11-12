@@ -25,13 +25,15 @@ export const config = {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 465,
     secure: process.env.SMTP_SECURE === 'true',
-    user: process.env.SMTP_USER || 'ikscbandhan@gmail.com',
-    pass: process.env.SMTP_PASS || 'ikscbandhan123',
-    fromEmail: process.env.FROM_EMAIL || 'ikscbandhan@gmail.com',
-    fromName: process.env.FROM_NAME || 'IKSC Bandhan'
+    user: (process.env.SMTP_USER || 'ikscbandhan@gmail.com').trim(),
+    // Trim password to remove any accidental whitespace/newlines
+    pass: (process.env.SMTP_PASS || 'ikscbandhan123').trim(),
+    fromEmail: (process.env.FROM_EMAIL || 'ikscbandhan@gmail.com').trim(),
+    fromName: (process.env.FROM_NAME || 'IKSC Bandhan').trim()
   },
   
   branding: {
-    site: process.env.BRAND_SITE || 'http://localhost:5000'
+    // Frontend URL for email links - MUST be set in production
+    site: process.env.BRAND_SITE || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173')
   }
 };

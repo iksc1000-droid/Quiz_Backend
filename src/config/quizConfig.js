@@ -89,6 +89,8 @@ export const getQuizConfig = (quizId) => {
     quizType = 'working-professionals';
   }
   
-  console.log(`🎯 Quiz ID: ${quizId} -> Quiz Type: ${quizType}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`🎯 Quiz ID: ${quizId} -> Quiz Type: ${quizType}`);
+  }
   return QUIZ_CONFIGS[quizType] || DEFAULT_QUIZ_CONFIG;
 };

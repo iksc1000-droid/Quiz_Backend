@@ -6,7 +6,7 @@ export class AttemptService {
     this.modelFactory = modelFactory;
   }
 
-  async createOrUpdateUser({ userId, quizId, email, name, phone, gender, userName, password }) {
+  async createOrUpdateUser({ userId, quizId, email, name, phone, gender }) {
     try {
       const attemptModel = this.modelFactory.getAttemptModel(quizId);
       
@@ -14,17 +14,28 @@ export class AttemptService {
       let attempt = await attemptModel.findOne({ email, quizId });
       
       if (attempt) {
-        // Update existing user
-        attempt.userId = userId;
-        attempt.name = name;
-        attempt.phone = phone;
-        attempt.gender = gender;
-        attempt.userName = userName;
-        attempt.password = password;
+        const lockedStatuses = ['submitted', 'finalizing', 'completed'];
+        
+        if (lockedStatuses.includes(attempt.status)) {
+          // Existing attempt is already completed - do not modify
+          logger.info(`ℹ️ Existing attempt for ${email} is '${attempt.status}'. No updates performed.`);
+          return attempt;
+        }
+
+        // Update in-progress attempt (allow name/phone updates)
+        if (userId) attempt.userId = userId;
+        if (name && name.trim()) attempt.name = name.trim();
+        if (phone && phone.trim()) attempt.phone = phone.trim();
+        if (gender) attempt.gender = gender;
+        
+        if (!attempt.status) attempt.status = 'in_progress';
+        if (!attempt.answers || attempt.answers.length === 0) {
+          attempt.answers = [];
+        }
         await attempt.save();
-        logger.info(`✅ User updated: ${email}`);
+        logger.info(`✅ User data updated: ${email} (name: ${attempt.name})`);
       } else {
-        // Create new user
+        // Create new user (without username/password)
         attempt = new attemptModel({
           userId,
           quizId,
@@ -32,13 +43,11 @@ export class AttemptService {
           name,
           phone,
           gender,
-          userName,
-          password,
           status: 'in_progress',
           answers: []
         });
         await attempt.save();
-        logger.info(`✅ User created: ${email}`);
+        logger.info(`✅ New user created: ${email}`);
       }
       
       return attempt;
@@ -197,6 +206,10 @@ export class AttemptService {
       if (!attempt) {
         throw new Error(`User attempt not found for email ${email} and quizId ${quizId}`);
       }
+      
+      // Update user info if provided (name, phone) - allow updates during finalization
+      if (name && name.trim()) attempt.name = name.trim();
+      if (phone && phone.trim()) attempt.phone = phone.trim();
       
       // Update attempt with answers and status
       attempt.answers = storageAnswers;
