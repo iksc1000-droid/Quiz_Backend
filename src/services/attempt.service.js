@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 
 export class AttemptService {
@@ -225,6 +226,34 @@ export class AttemptService {
     try {
       const resultModel = this.modelFactory.getResultModel(quizId);
       
+      // Check if result already exists for this attempt (prevent duplicates)
+      const existingResult = await resultModel.findOne({ 
+        email, 
+        quizId, 
+        attemptId 
+      });
+      
+      if (existingResult) {
+        logger.info(`ℹ️  Result already exists for attempt ${attemptId}, returning existing result`);
+        return existingResult;
+      }
+      
+      // Explicitly generate resultToken to ensure it's never null
+      // Use multiple fallbacks for maximum reliability
+      let resultToken;
+      try {
+        resultToken = new mongoose.Types.ObjectId().toString();
+      } catch (tokenError) {
+        // Fallback: Use timestamp + random string if ObjectId fails
+        resultToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+        logger.warn('⚠️  Used fallback token generation method');
+      }
+      
+      // Validate token is not empty
+      if (!resultToken || resultToken.trim() === '') {
+        throw new Error('Failed to generate resultToken');
+      }
+      
       const result = new resultModel({
         quizId,
         userId,
@@ -233,14 +262,46 @@ export class AttemptService {
         phone,
         summary,
         raw,
-        attemptId
+        attemptId,
+        resultToken // Explicitly set to ensure it's never null
       });
 
-      await result.save();
-      logger.info(`✅ Result created for user ${userId}`);
-      return result;
+      // Save with retry logic for duplicate key errors
+      let savedResult;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          savedResult = await result.save();
+          break;
+        } catch (saveError) {
+          // If duplicate key error, generate new token and retry
+          if (saveError.code === 11000 && saveError.keyPattern?.resultToken) {
+            retries--;
+            if (retries > 0) {
+              resultToken = new mongoose.Types.ObjectId().toString();
+              result.resultToken = resultToken;
+              logger.warn(`⚠️  Duplicate token detected, generating new token (${retries} retries left)`);
+            } else {
+              throw new Error('Failed to create result after multiple retries due to duplicate token');
+            }
+          } else {
+            throw saveError;
+          }
+        }
+      }
+
+      logger.info(`✅ Result created for user ${userId} with token ${savedResult.resultToken}`);
+      return savedResult;
     } catch (error) {
       logger.error('❌ Failed to create result:', error);
+      logger.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        keyPattern: error.keyPattern,
+        quizId,
+        email,
+        attemptId
+      });
       throw error;
     }
   }
