@@ -195,14 +195,19 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   // POST /register - Wrapper for /api/quizzes/:quizId/register
   app.post('/register', async (req, res) => {
     try {
-      // Determine quizId from body or use default for divorce quiz
-      const quizId = req.body.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1';
-      
-      // Create a new request object with quizId in params
-      req.params = { quizId };
-      
-      // Call the actual register endpoint
-      await attemptController.registerUser(req, res);
+      const rawQuizId = req.body?.quizId ?? process.env.DEFAULT_QUIZ_ID ?? 'divorce_conflict_v1';
+      const quizId = String(rawQuizId).trim();
+
+      const controllerReq = {
+        method: req.method,
+        originalUrl: req.originalUrl,
+        ip: req.ip,
+        headers: req.headers,
+        body: req.body,
+        params: { quizId },
+      };
+
+      await attemptController.registerUser(controllerReq, res);
     } catch (error) {
       logger.error('❌ Register wrapper failed:', error);
       res.status(500).json({
@@ -215,19 +220,24 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   // POST /result - Wrapper for /api/quizzes/:quizId/finalize
   app.post('/result', async (req, res) => {
     try {
-      // Determine quizId from body or use default
-      const quizId = req.body.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1';
+      const rawQuizId = req.body?.quizId ?? process.env.DEFAULT_QUIZ_ID ?? 'divorce_conflict_v1';
+      const quizId = String(rawQuizId).trim();
       
       // Generate userId if not provided (for compatibility with frontend)
       if (!req.body.userId && req.body.email) {
         req.body.userId = `user_${req.body.email.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
       }
       
-      // Create a new request object with quizId in params
-      req.params = { quizId };
-      
-      // Call the actual finalize endpoint
-      await attemptController.finalizeAttempt(req, res);
+      const controllerReq = {
+        method: req.method,
+        originalUrl: req.originalUrl,
+        ip: req.ip,
+        headers: req.headers,
+        body: req.body,
+        params: { quizId },
+      };
+
+      await attemptController.finalizeAttempt(controllerReq, res);
     } catch (error) {
       logger.error('❌ Result wrapper failed:', error);
       res.status(500).json({
@@ -240,8 +250,8 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   // GET /user/:email - Get user results by email
   app.get('/user/:email', async (req, res) => {
     try {
-      // Decode email from URL (handles %40 for @, etc.)
-      let email = decodeURIComponent(req.params.email);
+      const rawEmail = req.params?.email ?? '';
+      let email = decodeURIComponent(rawEmail);
       
       // Fix common encoding issues
       // If email contains %40, it means @ wasn't decoded properly
@@ -260,21 +270,30 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
         email = req.params.email.replace(/%40/g, '@').replace(/%/g, '');
       }
       
-      const rawQuizId = req.query?.quizId ?? process.env.DEFAULT_QUIZ_ID ?? 'divorce_conflict_v1';
-      const quizId = String(rawQuizId)
+      const rawQuizId =
+        req.query?.quizId ??
+        req.parsedQuery?.quizId ??
+        process.env.DEFAULT_QUIZ_ID ??
+        'divorce_conflict_v1';
+
+      const quizId = String(rawQuizId || '')
         .trim()
         .replace(/\s+/g, '_'); // Replace spaces with underscores
       
       logger.info(`🔍 [USER ENDPOINT] Original: ${req.params.email}, Decoded email: ${email}, quizId: ${quizId}`);
       
-      // Create a modified request object with query property (req.query is read-only)
-      const modifiedReq = {
-        ...req,
-        query: { email, quizId }
-      };
-      
-      // Call getResultsByEmail with modified request
-      await attemptController.getResultsByEmail(modifiedReq, res);
+      await attemptController.getResultsByEmail(
+        {
+          method: req.method,
+          originalUrl: req.originalUrl,
+          ip: req.ip,
+          headers: req.headers,
+          params: { email: rawEmail },
+          query: { email, quizId },
+          parsedQuery: { email, quizId },
+        },
+        res
+      );
     } catch (error) {
       logger.error('❌ Get user data failed:', error);
       logger.error('❌ Error message:', error.message);
