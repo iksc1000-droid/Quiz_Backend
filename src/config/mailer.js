@@ -40,11 +40,14 @@ export const createMailer = () => {
       passLength: config.smtp.pass?.length || 0,
       passHasSpaces: config.smtp.pass?.includes(' ') || false,
       passFirst4: config.smtp.pass?.substring(0, 4) || 'N/A',
-      passLast4: config.smtp.pass?.substring(Math.max(0, (config.smtp.pass?.length || 0) - 4)) || 'N/A',
+      passLast4:
+        config.smtp.pass?.substring(
+          Math.max(0, (config.smtp.pass?.length || 0) - 4)
+        ) || 'N/A',
       // Compare with raw env var to ensure trimming worked
       rawEnvPassLength: process.env.SMTP_PASS?.length || 0
     });
-    
+
     // Verify password matches what's in .env
     if (config.smtp.pass !== process.env.SMTP_PASS?.trim()) {
       logger.warn('⚠️  Password mismatch after trimming - this should not happen');
@@ -54,7 +57,10 @@ export const createMailer = () => {
   return transporter;
 };
 
-export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId, resultToken }) => {
+export const sendWelcomeEmail = async (
+  transporter,
+  { to, name, summary, quizId, resultToken }
+) => {
   try {
     // Get quiz-specific configuration
     if (process.env.NODE_ENV !== 'production') {
@@ -62,20 +68,30 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
     }
     const quizConfig = getQuizConfig(quizId);
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
+      console.log('📧 [EMAIL] Quiz config:', quizConfig);
     }
-    
-    // Create results URL with quiz type parameter for better UX
-    // Validate BRAND_SITE is set in production
+
+    // Validate BRAND_SITE (still a safety check – but we are using hard-coded URL for this quiz)
     if (!config.branding.site && process.env.NODE_ENV === 'production') {
-      logger.error('❌ BRAND_SITE is not set in production! Email links will not work.');
-      throw new Error('BRAND_SITE environment variable is required in production');
+      logger.error(
+        '❌ BRAND_SITE is not set in production! Email links may not be consistent.'
+      );
     }
-    const resultsUrl = 'https://conflict-resolution-quiz.ikscbandhan.in/divorce-email';
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`📧 [EMAIL] Results URL: ${resultsUrl}`);
-    }
-    
+
+    // ✅ FINAL: Divorce quiz result page (NO dynamic override)
+    const resultsUrl =
+      'https://conflict-resolution-quiz.ikscbandhan.in/divorce-email';
+
+    // Strong debug logs so we’re 100% sure what link is going out
+    console.log('🔥 [EMAIL CTA LINK] Using resultsUrl →', resultsUrl);
+    logger.info('[EMAIL][DEBUG_RESULTS_URL]', {
+      to,
+      quizId,
+      resultToken,
+      resultsUrl,
+      nodeEnv: process.env.NODE_ENV
+    });
+
     const mailOptions = {
       from: `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`,
       to,
@@ -253,15 +269,15 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
                         </ul>
                     </div>
                     
-                            <div class="cta-section">
-                                <h3>🚀 Next Step: See Your Quiz Result</h3>
-                                <p>Click below to view your personalised quiz summary and continue your journey of self-discovery:</p>
-                                <a href="${resultsUrl}" class="cta-button">See My Quiz Result</a>
-                                <p style="margin-top: 15px; font-size: 14px; color: #64748b;">
-                                    After viewing your results, don't forget to register for free to unlock your full IKSC Bandhan profile —<br>
-                                    and discover your complete personality blueprint designed to help you grow from the inside out.
-                                </p>
-                            </div>
+                    <div class="cta-section">
+                        <h3>🚀 Next Step: See Your Quiz Result</h3>
+                        <p>Click below to view your personalised quiz summary and continue your journey of self-discovery:</p>
+                        <a href="${resultsUrl}" class="cta-button">See My Quiz Result</a>
+                        <p style="margin-top: 15px; font-size: 14px; color: #64748b;">
+                            After viewing your results, don't forget to register for free to unlock your full IKSC Bandhan profile —<br>
+                            and discover your complete personality blueprint designed to help you grow from the inside out.
+                        </p>
+                    </div>
                     
                     <div class="wish-section">
                         <h3>💛 Our Wish for You</h3>
@@ -294,7 +310,7 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
     return result;
   } catch (error) {
     logger.error(`❌ Failed to send welcome email to ${to}:`, error.message || error);
-    logger.error(`❌ Email send error details:`, {
+    logger.error('❌ Email send error details:', {
       message: error.message,
       code: error.code,
       command: error.command,
