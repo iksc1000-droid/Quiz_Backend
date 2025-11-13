@@ -6,7 +6,7 @@ export class MailService {
     this.transporter = transporter;
   }
 
-  async sendWelcome({ to, name, summary, quizId }) {
+  async sendWelcome({ to, name, summary, quizId, resultToken }) {
     try {
       // Validate email address
       if (!to || !to.includes('@')) {
@@ -15,7 +15,7 @@ export class MailService {
 
       logger.info(`📧 [EMAIL] Attempting to send welcome email to: ${to}`);
       
-      const result = await sendWelcomeEmail(this.transporter, { to, name, summary, quizId });
+      const result = await sendWelcomeEmail(this.transporter, { to, name, summary, quizId, resultToken });
       
       if (!result || !result.messageId) {
         throw new Error('Email sent but no messageId returned - email may not have been delivered');

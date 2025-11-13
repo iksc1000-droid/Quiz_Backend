@@ -54,7 +54,7 @@ export const createMailer = () => {
   return transporter;
 };
 
-export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId }) => {
+export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId, resultToken }) => {
   try {
     // Get quiz-specific configuration
     if (process.env.NODE_ENV !== 'production') {
@@ -71,7 +71,26 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId 
       logger.error('❌ BRAND_SITE is not set in production! Email links will not work.');
       throw new Error('BRAND_SITE environment variable is required in production');
     }
-    const resultsUrl = `${config.branding.site}/results?quiz=${encodeURIComponent(quizId)}`;
+    let resultsUrl;
+    try {
+      const normalizedBase = config.branding.site.endsWith('/')
+        ? `${config.branding.site}results`
+        : `${config.branding.site}/results`;
+      const url = new URL(normalizedBase);
+      url.searchParams.set('quiz', quizId);
+      url.searchParams.set('email', to);
+      if (resultToken) {
+        url.searchParams.set('token', resultToken);
+      }
+      resultsUrl = url.toString();
+    } catch (err) {
+      logger.warn('⚠️  Failed to construct results URL with URL API, falling back to manual string building:', err.message);
+      const base = config.branding.site.endsWith('/')
+        ? `${config.branding.site}results`
+        : `${config.branding.site}/results`;
+      const tokenSegment = resultToken ? `&token=${encodeURIComponent(resultToken)}` : '';
+      resultsUrl = `${base}?quiz=${encodeURIComponent(quizId)}&email=${encodeURIComponent(to)}${tokenSegment}`;
+    }
     if (process.env.NODE_ENV !== 'production') {
       console.log(`📧 [EMAIL] Results URL: ${resultsUrl}`);
     }
