@@ -1,3 +1,36 @@
+import nodemailer from 'nodemailer';
+import { config } from './env.js';
+import { logger } from '../utils/logger.js';
+import { getQuizConfig } from './quizConfig.js';
+
+export const createMailer = () => {
+  const transporter = nodemailer.createTransport({
+    host: config.smtp.host,
+    port: config.smtp.port,
+    secure: config.smtp.secure,
+    auth: {
+      user: config.smtp.user,
+      pass: config.smtp.pass
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info('📧 Mailer configuration:', {
+      host: config.smtp.host,
+      port: config.smtp.port,
+      secure: config.smtp.secure,
+      user: config.smtp.user,
+      fromEmail: config.smtp.fromEmail,
+      fromName: config.smtp.fromName
+    });
+  }
+
+  return transporter;
+};
+
 export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId, resultToken }) => {
     try {
       // Get quiz-specific configuration
@@ -9,13 +42,8 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
         console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
       }
       
-      // Create results URL with quiz type parameter for better UX
-      if (!config.branding.site && process.env.NODE_ENV === 'production') {
-        logger.error('❌ BRAND_SITE is not set in production! Email links will not work.');
-        throw new Error('BRAND_SITE environment variable is required in production');
-      }
-  
       // ✅ FINAL FIXED LINK (NO OVERRIDE ANYWHERE ELSE NOW)
+      // Hardcoded URL - no dependency on BRAND_SITE
       const resultsUrl = 'https://conflict-resolution-quiz.ikscbandhan.in/divorce-email';
   
       // Strong backend debug
@@ -31,7 +59,7 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
       const mailOptions = {
         from: `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`,
         to,
-        subject: `[#DEBUG-NEW] 🌟 You've Taken the First Step, ${name} — Your IKSC Bandhan ${quizConfig.category} Quiz Result Awaits!`,
+        subject: `🌟 You've Taken the First Step, ${name} — Your IKSC Bandhan ${quizConfig.category} Quiz Result Awaits!`,
         html: `
           <!DOCTYPE html>
           <html lang="en">
