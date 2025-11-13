@@ -260,9 +260,10 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
         email = req.params.email.replace(/%40/g, '@').replace(/%/g, '');
       }
       
-      const quizId = (req.query.quizId || process.env.DEFAULT_QUIZ_ID || 'divorce_conflict_v1')
-        .replace(/\s+/g, '_') // Replace spaces with underscores
-        .trim();
+      const rawQuizId = req.query?.quizId ?? process.env.DEFAULT_QUIZ_ID ?? 'divorce_conflict_v1';
+      const quizId = String(rawQuizId)
+        .trim()
+        .replace(/\s+/g, '_'); // Replace spaces with underscores
       
       logger.info(`🔍 [USER ENDPOINT] Original: ${req.params.email}, Decoded email: ${email}, quizId: ${quizId}`);
       
