@@ -1,11 +1,50 @@
 import { Router } from 'express';
 import { QuizController, AttemptController } from '../controllers/quiz.controller.js';
+import { PDFService } from '../services/pdf.service.js';
+import { logger } from '../utils/logger.js';
 
-export const createQuizRoutes = (quizService, attemptService, scoringService, mailService) => {
+export const createQuizRoutes = (quizService, attemptService, scoringService, mailService, modelFactory) => {
   const router = Router();
   
   const quizController = new QuizController(quizService);
   const attemptController = new AttemptController(attemptService, scoringService, mailService, quizService);
+  const pdfService = new PDFService(modelFactory);
+
+  // GET /api/quizzes/download-report - download PDF report
+  router.get('/download-report', async (req, res) => {
+    try {
+      const { email, quizId, token } = req.query;
+      
+      if (!email || !quizId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email and quizId are required'
+        });
+      }
+
+      const pdfBuffer = await pdfService.generateReportPDF({
+        email: decodeURIComponent(email),
+        quizId,
+        resultToken: token ? decodeURIComponent(token) : null
+      });
+
+      const name = email.split('@')[0];
+      const filename = `IKSC_Bandhan_Report_${name}_${Date.now()}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+
+      res.send(pdfBuffer);
+    } catch (error) {
+      logger.error('❌ [PDF] Download error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate PDF report',
+        error: error.message
+      });
+    }
+  });
 
   // GET /api/quizzes/results - get results by email and quizId (MUST be before /:quizId route)
   router.get('/results', attemptController.getResultsByEmail.bind(attemptController));

@@ -9,7 +9,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { createQuizRoutes } from './routes/quiz.routes.js';
 import { AttemptController } from './controllers/quiz.controller.js';
 
-export const createApp = (quizService, attemptService, scoringService, mailService) => {
+export const createApp = (quizService, attemptService, scoringService, mailService, modelFactory) => {
   const app = express();
 
   // ---- MIDDLEWARE PROFILER (TEMP) ----
@@ -307,7 +307,7 @@ export const createApp = (quizService, attemptService, scoringService, mailServi
   });
 
   // API routes
-  app.use('/api/quizzes', createQuizRoutes(quizService, attemptService, scoringService, mailService));
+  app.use('/api/quizzes', createQuizRoutes(quizService, attemptService, scoringService, mailService, modelFactory));
 
   // 404 handler
   app.use(notFound);

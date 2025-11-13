@@ -240,7 +240,7 @@ const startServer = async () => {
 
     // Create app
     logger.info('🌐 Creating Express app...');
-    const app = createApp(quizService, attemptService, scoringService, mailService);
+    const app = createApp(quizService, attemptService, scoringService, mailService, modelFactory);
     logger.info('✅ Express app created');
 
     // Start server

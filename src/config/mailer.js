@@ -42,13 +42,12 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
         console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
       }
       
-      // ✅ FINAL FIXED LINK (NO OVERRIDE ANYWHERE ELSE NOW)
-      // Hardcoded URL - no dependency on BRAND_SITE
+      // ✅ Frontend Results URL - Link to quiz results page
       const resultsUrl = 'https://conflict-resolution-quiz.ikscbandhan.in/divorce-email';
   
       // Strong backend debug
-      console.log("🔥 [EMAIL][DEBUG_RESULTS_URL] USING URL:", resultsUrl);
-      logger.info("[EMAIL][DEBUG_RESULTS_URL]", {
+      console.log("🔥 [EMAIL][RESULTS_URL] USING URL:", resultsUrl);
+      logger.info("[EMAIL][RESULTS_URL]", {
         to,
         quizId,
         resultToken,
@@ -236,7 +235,7 @@ export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId,
                       <div class="cta-section">
                           <h3>🚀 Next Step: See Your Quiz Result</h3>
                           <p>Click below to view your personalised quiz summary and continue your journey of self-discovery:</p>
-                          <a href="${resultsUrl}" class="cta-button">See My Quiz Result</a>
+                          <a href="${resultsUrl}" class="cta-button">See Your Quiz Result</a>
                           <p style="margin-top: 15px; font-size: 14px; color: #64748b;">
                               After viewing your results, don't forget to register for free to unlock your full IKSC Bandhan profile —<br>
                               and discover your complete personality blueprint designed to help you grow from the inside out.
