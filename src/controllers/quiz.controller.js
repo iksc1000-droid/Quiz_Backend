@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
 import { createHttpResponse, createErrorResponse } from '../utils/http.js';
+import { getQuizConfig } from '../config/quizConfig.js';
 
 // Validation schemas
 const answerSchema = z.object({
@@ -329,15 +330,14 @@ export class AttemptController {
             topCategory = categoryNames[sortedCategories[0][0]] || 'General';
           }
         } else {
-          // For other quiz types, use quiz config category
-          const quizConfig = require('../config/quizConfig.js').getQuizConfig(quizId);
+          const quizConfig = getQuizConfig(quizId);
           topCategory = quizConfig.category || 'General';
         }
       } catch (error) {
         logger.warn('⚠️ Failed to calculate topCategory, using default:', error.message);
         // Fallback to quiz config category
         try {
-          const quizConfig = require('../config/quizConfig.js').getQuizConfig(quizId);
+          const quizConfig = getQuizConfig(quizId);
           topCategory = quizConfig.category || 'General';
         } catch (e) {
           topCategory = 'General';
@@ -492,7 +492,20 @@ export class AttemptController {
   // Get results by email
   async getResultsByEmail(req, res) {
     try {
-      const { email, quizId } = req.query;
+      const rawEmail =
+        req.query?.email ??
+        req.parsedQuery?.email ??
+        req.params?.email ??
+        '';
+
+      const rawQuizId =
+        req.query?.quizId ??
+        req.parsedQuery?.quizId ??
+        process.env.DEFAULT_QUIZ_ID ??
+        'divorce_conflict_v1';
+
+      const email = String(rawEmail || '').trim();
+      const quizId = String(rawQuizId || '').trim();
       
       if (!email || !quizId) {
         return res.status(400).json({
@@ -502,7 +515,7 @@ export class AttemptController {
       }
 
       // Normalize email and quizId
-      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedEmail = email.toLowerCase();
       const normalizedQuizId = quizId.trim().replace(/\s+/g, '_');
 
       logger.info(`🔍 [RESULTS] Looking up results for email: ${normalizedEmail}, quizId: ${normalizedQuizId}`);
