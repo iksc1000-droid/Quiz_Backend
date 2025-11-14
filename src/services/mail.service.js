@@ -24,11 +24,31 @@ export class MailService {
         throw new Error(`Invalid email address: ${to}`);
       }
 
+      // Ensure quizId is never undefined - use fallback chain
+      const finalQuizId =
+        quizId ||
+        process.env.QUIZ_ID ||
+        'divorce_conflict_v1';
+
+      logger.info('[MAIL_SERVICE][SEND_WELCOME]', {
+        to,
+        incomingQuizId: quizId,
+        envQuizId: process.env.QUIZ_ID,
+        finalQuizId
+      });
+
       logger.info(`📧 [EMAIL] Attempting to send welcome email to: ${to}`);
       logger.info(`📧 [EMAIL] Delegating to sendWelcomeEmail() in mailer.js - URL will be built there`);
       
       // Delegate to mailer.js - it handles URL construction via getResultsUrlForQuiz()
-      const result = await sendWelcomeEmail(this.transporter, { to, name, summary, quizId, resultToken });
+      // Pass finalQuizId to ensure it's never undefined
+      const result = await sendWelcomeEmail(this.transporter, {
+        to,
+        name,
+        summary,
+        quizId: finalQuizId,
+        resultToken
+      });
       
       if (!result || !result.messageId) {
         throw new Error('Email sent but no messageId returned - email may not have been delivered');
