@@ -1,6 +1,17 @@
 import { logger } from '../utils/logger.js';
 import { sendWelcomeEmail } from '../config/mailer.js';
 
+/**
+ * MailService - Wrapper service for sending emails
+ * 
+ * PRODUCTION EMAIL FLOW:
+ * 1. quiz.controller.js -> queueWelcomeToUser()
+ * 2. mail.service.js -> sendWelcome() <- THIS METHOD
+ * 3. mailer.js -> sendWelcomeEmail() -> builds URL via getResultsUrlForQuiz()
+ * 
+ * This service does NOT build result URLs - it delegates to mailer.js
+ * All URL construction happens in src/config/mailer.js via getResultsUrlForQuiz()
+ */
 export class MailService {
   constructor(transporter) {
     this.transporter = transporter;
@@ -14,7 +25,9 @@ export class MailService {
       }
 
       logger.info(`📧 [EMAIL] Attempting to send welcome email to: ${to}`);
+      logger.info(`📧 [EMAIL] Delegating to sendWelcomeEmail() in mailer.js - URL will be built there`);
       
+      // Delegate to mailer.js - it handles URL construction via getResultsUrlForQuiz()
       const result = await sendWelcomeEmail(this.transporter, { to, name, summary, quizId, resultToken });
       
       if (!result || !result.messageId) {

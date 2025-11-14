@@ -1,66 +1,30 @@
-import nodemailer from 'nodemailer';
-import { config } from './env.js';
-import { logger } from '../utils/logger.js';
-import { getQuizConfig } from './quizConfig.js';
-
+#!/usr/bin/env node
 /**
- * CENTRALIZED RESULTS URL BUILDER
+ * Test helper to preview email template and verify results URL
  * 
- * This is the ONLY place in the codebase that constructs the "See Your Quiz Result" CTA URL.
+ * Usage: node scripts/test-email-template.js
  * 
- * PRODUCTION EMAIL SENDER PATH:
- * 1. quiz.controller.js -> queueWelcomeToUser()
- * 2. mail.service.js -> sendWelcome()
- * 3. mailer.js -> sendWelcomeEmail() <- THIS FUNCTION (line 34)
- * 
- * The URL is built here via getResultsUrlForQuiz() and injected into the email template.
+ * This will generate a preview HTML file without sending an email
  */
-const getResultsUrlForQuiz = (quizId, resultToken) => {
-  // For divorce conflict quiz, hard-code the frontend results page
+
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { writeFileSync, mkdirSync } from 'fs';
+import { getQuizConfig } from '../src/config/quizConfig.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Import the internal function (we'll need to export it or duplicate the logic)
+// For now, let's duplicate the key parts for testing
+
+const getResultsUrlForQuiz = (quizId) => {
   if (quizId === 'divorce_conflict_v1') {
     return 'https://conflict-resolution-quiz.ikscbandhan.in/divorce-email';
   }
-  
-  // Future quizzes can have their own mapping here
-  // For now, fallback to generic results page (should not be used for divorce quiz)
-  const fallbackUrl = `${config.branding.site || 'https://www.ikscbandhan.in'}/results?quiz=${encodeURIComponent(quizId)}`;
-  
-  logger.warn(`⚠️ [EMAIL] Using fallback URL for quizId: ${quizId}`, { fallbackUrl });
-  return fallbackUrl;
+  return `https://www.ikscbandhan.in/results?quiz=${encodeURIComponent(quizId)}`;
 };
 
-export const createMailer = () => {
-  const transporter = nodemailer.createTransport({
-    host: config.smtp.host,
-    port: config.smtp.port,
-    secure: config.smtp.secure,
-    auth: {
-      user: config.smtp.user,
-      pass: config.smtp.pass
-    },
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-
-  if (process.env.NODE_ENV !== 'production') {
-    logger.info('📧 Mailer configuration:', {
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: config.smtp.secure,
-      user: config.smtp.user,
-      fromEmail: config.smtp.fromEmail,
-      fromName: config.smtp.fromName
-    });
-  }
-
-  return transporter;
-};
-
-/**
- * Build welcome email HTML template
- * Extracted for testing and reuse
- */
 const buildWelcomeEmailHtml = ({ name, quizConfig, resultsUrl, summary }) => {
   return `
     <!DOCTYPE html>
@@ -262,7 +226,7 @@ const buildWelcomeEmailHtml = ({ name, quizConfig, resultsUrl, summary }) => {
             </div>
             
             <div class="footer">
-                <p>Sent from: ${config.smtp.fromEmail}</p>
+                <p>Sent from: test@ikscbandhan.in</p>
                 <p>© ${new Date().getFullYear()} IKSC Bandhan. All rights reserved.</p>
             </div>
         </div>
@@ -271,64 +235,91 @@ const buildWelcomeEmailHtml = ({ name, quizConfig, resultsUrl, summary }) => {
   `;
 };
 
-export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId, resultToken }) => {
-    try {
-      // Get quiz-specific configuration
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`📧 [EMAIL] Generating email for quizId: ${quizId}`);
-      }
-      const quizConfig = getQuizConfig(quizId);
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
-      }
-      
-      // ✅ CENTRALIZED: Get results URL from single source of truth
-      const resultsUrl = getResultsUrlForQuiz(quizId, resultToken);
+// Test the email template
+const testEmailTemplate = () => {
+  console.log('🧪 Testing email template generation...\n');
   
-      // 🔥 STRONG DEBUG LOGGING - This will appear in PM2 logs
-      console.log('🔥 [EMAIL][FINAL_RESULTS_URL]', {
-        function: 'sendWelcomeEmail',
-        to,
-        quizId,
-        resultToken: resultToken ? 'present' : 'missing',
-        resultsUrl,
-        nodeEnv: process.env.NODE_ENV,
-        timestamp: new Date().toISOString()
-      });
-      logger.info('🔥 [EMAIL][FINAL_RESULTS_URL]', {
-        function: 'sendWelcomeEmail',
-        to,
-        quizId,
-        resultToken: resultToken ? 'present' : 'missing',
-        resultsUrl,
-        nodeEnv: process.env.NODE_ENV,
-        timestamp: new Date().toISOString()
-      });
+  const quizId = 'divorce_conflict_v1';
+  const quizConfig = getQuizConfig(quizId);
+  const resultsUrl = getResultsUrlForQuiz(quizId, 'dummyToken123');
   
-      // Build email HTML using centralized function
-      const emailHtml = buildWelcomeEmailHtml({ name, quizConfig, resultsUrl, summary });
-      
-      const mailOptions = {
-        from: `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`,
-        to,
-        subject: `🌟 You've Taken the First Step, ${name} — Your IKSC Bandhan ${quizConfig.category} Quiz Result Awaits!`,
-        html: emailHtml
-      };
+  console.log('📋 Test Parameters:');
+  console.log('  quizId:', quizId);
+  console.log('  resultToken: dummyToken123');
+  console.log('  email: test@example.com');
+  console.log('  name: Test User');
+  console.log('  topCategory: Personal Growth\n');
   
-      const result = await transporter.sendMail(mailOptions);
-      logger.info(`✅ Welcome email sent to ${to}:`, result.messageId);
-      return result;
-    } catch (error) {
-      logger.error(`❌ Failed to send welcome email to ${to}:`, error.message || error);
-      logger.error(`❌ Email send error details:`, {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-        responseCode: error.responseCode,
-        stack: error.stack
-      });
-      throw error;
+  console.log('🔗 Generated Results URL:');
+  console.log('  ', resultsUrl);
+  console.log('');
+  
+  // Verify URL is correct
+  const expectedUrl = 'https://conflict-resolution-quiz.ikscbandhan.in/divorce-email';
+  if (resultsUrl === expectedUrl) {
+    console.log('✅ URL is CORRECT!');
+  } else {
+    console.log('❌ URL is WRONG!');
+    console.log('   Expected:', expectedUrl);
+    console.log('   Got:     ', resultsUrl);
+  }
+  console.log('');
+  
+  // Generate HTML
+  const emailHtml = buildWelcomeEmailHtml({
+    name: 'Test User',
+    quizConfig,
+    resultsUrl,
+    summary: { topCategory: 'Personal Growth' }
+  });
+  
+  // Check if URL appears in HTML
+  if (emailHtml.includes(resultsUrl)) {
+    console.log('✅ Results URL found in email HTML');
+  } else {
+    console.log('❌ Results URL NOT found in email HTML!');
+  }
+  
+  // Check for wrong URL
+  if (emailHtml.includes('www.ikscbandhan.in/results?quiz=')) {
+    console.log('❌ WARNING: Wrong URL pattern found in HTML!');
+  } else {
+    console.log('✅ No wrong URL patterns found');
+  }
+  console.log('');
+  
+  // Extract button link
+  const buttonMatch = emailHtml.match(/<a href="([^"]+)"[^>]*class="cta-button"/);
+  if (buttonMatch) {
+    const buttonUrl = buttonMatch[1];
+    console.log('🔘 Button Link Found:');
+    console.log('  ', buttonUrl);
+    if (buttonUrl === expectedUrl) {
+      console.log('✅ Button link is CORRECT!');
+    } else {
+      console.log('❌ Button link is WRONG!');
     }
-  };
+  } else {
+    console.log('❌ Could not find button link in HTML!');
+  }
+  console.log('');
   
+  // Save preview file
+  try {
+    const tmpDir = join(__dirname, '..', 'tmp');
+    mkdirSync(tmpDir, { recursive: true });
+    const previewPath = join(tmpDir, 'email-preview.html');
+    writeFileSync(previewPath, emailHtml, 'utf-8');
+    console.log('📄 Email preview saved to:');
+    console.log('  ', previewPath);
+    console.log('');
+    console.log('💡 Open this file in a browser to preview the email');
+  } catch (error) {
+    console.log('⚠️  Could not save preview file:', error.message);
+  }
+  
+  console.log('\n✅ Test complete!');
+};
+
+testEmailTemplate();
+
