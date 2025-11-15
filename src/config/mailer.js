@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { config } from './env.js';
 import { logger } from '../utils/logger.js';
-import { getQuizConfig } from './quizConfig.js';
+import { getQuizConfig, getEmailButtonUrl } from './quizConfig.js';
 
 /**
  * CENTRALIZED RESULTS URL BUILDER
@@ -57,6 +57,7 @@ export const createMailer = () => {
   return transporter;
 };
 
+<<<<<<< HEAD
 /**
  * Build welcome email HTML template
  * Extracted for testing and reuse
@@ -212,6 +213,174 @@ const buildWelcomeEmailHtml = ({ name, quizConfig, resultsUrl, summary }) => {
             <div class="content">
                 <div class="greeting">
                     Hello <span class="highlight">${name}</span>,
+=======
+export const sendWelcomeEmail = async (transporter, { to, name, summary, quizId }) => {
+  try {
+    // Get quiz-specific configuration
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📧 [EMAIL] Generating email for quizId: ${quizId}`);
+    }
+    const quizConfig = getQuizConfig(quizId);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📧 [EMAIL] Quiz config:`, quizConfig);
+    }
+    
+    // Create results URL - dynamic based on quizId
+    const resultsUrl = getEmailButtonUrl(quizId);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📧 [EMAIL] Results URL for quiz ${quizId}: ${resultsUrl}`);
+    }
+    
+    const mailOptions = {
+      from: `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`,
+      to,
+      subject: `🌟 You've Taken the First Step, ${name} — Your IKSC Bandhan ${quizConfig.category} Quiz Result Awaits!`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Your IKSC Bandhan ${quizConfig.category} Quiz Results</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    line-height: 1.8;
+                    color: #333;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #f8fafc;
+                }
+                .container {
+                    background-color: white;
+                    padding: 40px;
+                    border-radius: 16px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    border: 1px solid #e2e8f0;
+                }
+                .header {
+                    text-align: center;
+                    margin-bottom: 40px;
+                    background: linear-gradient(135deg, ${quizConfig.color}20 0%, ${quizConfig.color}40 100%);
+                    padding: 30px;
+                    border-radius: 12px;
+                    border-left: 4px solid ${quizConfig.color};
+                }
+                .header h1 {
+                    margin: 0 0 10px 0;
+                    font-size: 24px;
+                    color: ${quizConfig.color};
+                    font-weight: 700;
+                }
+                .header .emoji {
+                    font-size: 32px;
+                    margin-bottom: 10px;
+                }
+                .content {
+                    margin-bottom: 30px;
+                }
+                .greeting {
+                    font-size: 18px;
+                    margin-bottom: 20px;
+                    color: #1a202c;
+                }
+                .highlight {
+                    color: ${quizConfig.color};
+                    font-weight: 600;
+                }
+                .strength-section {
+                    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+                    padding: 25px;
+                    border-radius: 12px;
+                    margin: 25px 0;
+                    border-left: 4px solid #0ea5e9;
+                }
+                .glimpse-section {
+                    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+                    padding: 25px;
+                    border-radius: 12px;
+                    margin: 25px 0;
+                    border-left: 4px solid #22c55e;
+                }
+                .glimpse-section h3 {
+                    color: #166534;
+                    margin-top: 0;
+                    font-size: 18px;
+                }
+                .glimpse-list {
+                    list-style: none;
+                    padding: 0;
+                    margin: 15px 0;
+                }
+                .glimpse-list li {
+                    padding: 8px 0;
+                    position: relative;
+                    padding-left: 25px;
+                }
+                .glimpse-list li:before {
+                    content: "✨";
+                    position: absolute;
+                    left: 0;
+                    top: 8px;
+                }
+                .cta-section {
+                    text-align: center;
+                    margin: 30px 0;
+                }
+                .cta-button {
+                    display: inline-block;
+                    background: linear-gradient(135deg, ${quizConfig.color} 0%, ${quizConfig.color}dd 100%);
+                    color: white;
+                    padding: 16px 32px;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    font-size: 16px;
+                    box-shadow: 0 4px 12px ${quizConfig.color}40;
+                    transition: transform 0.2s ease;
+                }
+                .cta-button:hover {
+                    transform: translateY(-2px);
+                }
+                .wish-section {
+                    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                    padding: 25px;
+                    border-radius: 12px;
+                    margin: 25px 0;
+                    border-left: 4px solid #f59e0b;
+                }
+                .wish-section h3 {
+                    color: #92400e;
+                    margin-top: 0;
+                    font-size: 18px;
+                }
+                .footer {
+                    border-top: 2px solid #e2e8f0;
+                    padding-top: 25px;
+                    text-align: center;
+                    color: #64748b;
+                    font-size: 14px;
+                    margin-top: 30px;
+                }
+                .signature {
+                    margin: 20px 0;
+                    font-style: italic;
+                    color: #4a5568;
+                }
+                .branding {
+                    font-weight: 600;
+                    color: ${quizConfig.color};
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="emoji">${quizConfig.emoji}</div>
+                    <h1>You've Taken the First Step, ${name}!</h1>
+                    <p>Your IKSC Bandhan ${quizConfig.category} Quiz Result Awaits!</p>
+>>>>>>> f67f70c (backend of quiz trying to deploy)
                 </div>
                 
                 <p>Congratulations on completing your IKSC Bandhan <span class="highlight">${quizConfig.category} Quiz</span>! 🎉<br>
